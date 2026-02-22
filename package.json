@@ -1,5 +1,5 @@
 {
-  "name": "shadregistry",
+  "name": "@shadregistry/cli",
   "version": "0.1.0",
   "description": "CLI for publishing and managing shadcn-compatible component registries on ShadRegistry",
   "type": "module",
@@ -12,7 +12,10 @@
   "scripts": {
     "build": "bun build ./src/index.ts ./bin/shadregistry.ts --outdir ./dist --target node --format esm --splitting",
     "dev": "bun run ./bin/shadregistry.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "release": "bun run build && npm version patch && git push origin main --tags",
+    "release:minor": "bun run build && npm version minor && git push origin main --tags",
+    "release:major": "bun run build && npm version major && git push origin main --tags"
   },
   "repository": {
     "type": "git",
