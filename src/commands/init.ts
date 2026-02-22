@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
@@ -177,6 +178,23 @@ export const initCommand = new Command("init")
 			mkdirSync(srcDir, { recursive: true });
 		}
 
+		// Write package.json if it doesn't exist (provides React types for JSX)
+		const pkgJsonPath = join(cwd, "package.json");
+		let needsInstall = false;
+		if (!existsSync(pkgJsonPath)) {
+			const pkg = {
+				name: `${registryName}-registry`,
+				private: true,
+				devDependencies: {
+					react: "^19.0.0",
+					"@types/react": "^19.0.0",
+					typescript: "^5.0.0",
+				},
+			};
+			writeFileSync(pkgJsonPath, `${JSON.stringify(pkg, null, 2)}\n`);
+			needsInstall = true;
+		}
+
 		// Write tsconfig.json if it doesn't exist (enables JSX support for .tsx files)
 		const tsconfigPath = join(cwd, "tsconfig.json");
 		if (!existsSync(tsconfigPath)) {
@@ -194,6 +212,19 @@ export const initCommand = new Command("init")
 				include: [`${sourceDir}/**/*.ts`, `${sourceDir}/**/*.tsx`],
 			};
 			writeFileSync(tsconfigPath, `${JSON.stringify(tsconfig, null, 2)}\n`);
+		}
+
+		// Auto-install dependencies if we created package.json
+		if (needsInstall) {
+			const pm = detectPackageManager(cwd);
+			log.info(`Installing dependencies with ${pm}...`);
+			try {
+				execSync(`${pm} install`, { cwd, stdio: "pipe" });
+			} catch {
+				log.warn(
+					`Could not auto-install. Run \`${pm} install\` manually.`,
+				);
+			}
 		}
 
 		log.newline();
@@ -222,4 +253,15 @@ function toTitleCase(str: string): string {
 		.split("-")
 		.map((w) => w.charAt(0).toUpperCase() + w.slice(1))
 		.join(" ");
+}
+
+function detectPackageManager(cwd: string): string {
+	if (
+		existsSync(join(cwd, "bun.lock")) ||
+		existsSync(join(cwd, "bun.lockb"))
+	)
+		return "bun";
+	if (existsSync(join(cwd, "pnpm-lock.yaml"))) return "pnpm";
+	if (existsSync(join(cwd, "yarn.lock"))) return "yarn";
+	return "npm";
 }
