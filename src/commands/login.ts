@@ -97,8 +97,9 @@ async function loginWithDeviceAuth(hostname: string) {
   }
 
   // Step 2: Show code and open browser
+  const verifyUrl = `${deviceData.verification_uri}?code=${encodeURIComponent(deviceData.user_code)}`;
   log.newline();
-  log.info(`! First, copy your one-time code: ${deviceData.user_code}`);
+  log.info(`! Your one-time code: ${deviceData.user_code}`);
   log.newline();
 
   const rl = createInterface({
@@ -114,10 +115,10 @@ async function loginWithDeviceAuth(hostname: string) {
   });
 
   try {
-    await open(deviceData.verification_uri);
+    await open(verifyUrl);
   } catch {
     log.info(
-      `Could not open browser. Visit: ${deviceData.verification_uri}`,
+      `Could not open browser. Visit: ${verifyUrl}`,
     );
   }
 
