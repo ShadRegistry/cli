@@ -54,7 +54,22 @@ export const initCommand = new Command("init")
           }>;
         }>("/api/cli/registries");
 
-        if (registries.length > 0 && !registryName) {
+        let needsRemoteCreate = false;
+
+        const existingRegistry = registryName
+          ? registries.find((r) => r.name === registryName)
+          : undefined;
+
+        if (existingRegistry) {
+          // --name matches an existing remote registry — use it
+          displayName = displayName ?? existingRegistry.displayName;
+          isPrivate = existingRegistry.isPrivate;
+          log.success(`Using existing registry @${registryName}`);
+        } else if (registryName) {
+          // --name provided but doesn't exist remotely — need to create it
+          needsRemoteCreate = true;
+        } else if (registries.length > 0) {
+          // No --name flag and user has registries — let them pick
           log.info("Your registries:");
           registries.forEach((r, i) => {
             log.info(
@@ -71,19 +86,29 @@ export const initCommand = new Command("init")
             registryName = registries[idx].name;
             displayName = registries[idx].displayName;
             isPrivate = registries[idx].isPrivate;
+          } else {
+            needsRemoteCreate = true;
           }
-          // Otherwise fall through to create new
+        } else {
+          // No registries at all — need to create one
+          needsRemoteCreate = true;
         }
 
-        if (!registryName) {
-          registryName = await prompt("Registry name: ");
-          if (!displayName) {
-            displayName = await prompt(
-              `Display name (${toTitleCase(registryName)}): `,
-            );
-            if (!displayName) displayName = toTitleCase(registryName);
+        if (needsRemoteCreate) {
+          if (!registryName) {
+            registryName = await prompt("Registry name: ");
           }
-          if (!opts.private) {
+          if (!displayName) {
+            if (opts.yes) {
+              displayName = toTitleCase(registryName);
+            } else {
+              displayName = await prompt(
+                `Display name (${toTitleCase(registryName)}): `,
+              );
+              if (!displayName) displayName = toTitleCase(registryName);
+            }
+          }
+          if (!opts.private && !opts.yes) {
             const privAnswer = await prompt("Private? (y/n, default: n): ");
             isPrivate = privAnswer.toLowerCase() === "y";
           }
