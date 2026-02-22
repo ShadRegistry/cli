@@ -1,0 +1,53 @@
+{
+  "name": "shadregistry",
+  "version": "0.1.0",
+  "description": "CLI for publishing and managing shadcn-compatible component registries on ShadRegistry",
+  "type": "module",
+  "bin": {
+    "shadregistry": "./dist/bin/shadregistry.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "bun build ./src/index.ts ./bin/shadregistry.ts --outdir ./dist --target node --format esm --splitting",
+    "dev": "bun run ./bin/shadregistry.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ShadRegistry/cli.git"
+  },
+  "homepage": "https://shadregistry.com",
+  "bugs": {
+    "url": "https://github.com/ShadRegistry/cli/issues"
+  },
+  "keywords": [
+    "shadcn",
+    "registry",
+    "components",
+    "cli",
+    "publish"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "picocolors": "^1.1.1",
+    "ora": "^8.1.0",
+    "open": "^10.1.0",
+    "zod": "^3.23.8",
+    "fast-glob": "^3.3.3",
+    "diff": "^7.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "@types/node": "^22.0.0",
+    "@types/diff": "^6.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

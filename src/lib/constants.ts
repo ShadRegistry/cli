@@ -1,0 +1,10 @@
+export const VERSION = "0.1.0";
+export const DEFAULT_API_URL = "https://shadregistry.com";
+export const AUTH_DIR = ".shadregistry";
+export const AUTH_FILE = "auth.json";
+export const CONFIG_FILE = "shadregistry.config.json";
+export const REGISTRY_FILE = "registry.json";
+export const DEFAULT_SOURCE_DIR = "registry";
+export const TOKEN_PREFIX_PAT = "pat_";
+export const TOKEN_PREFIX_SKEY = "skey_";
+export const MAX_BATCH_SIZE = 512 * 1024; // 512KB per publish batch
