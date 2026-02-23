@@ -3,7 +3,7 @@ import { createInterface } from "node:readline";
 import ora from "ora";
 import { log } from "../lib/logger.js";
 import { resolveToken, resolveHostname } from "../lib/auth.js";
-import { readConfig, readManifest } from "../lib/config.js";
+import { readConfig, readManifest, writeManifest } from "../lib/config.js";
 import { ApiClient } from "../lib/api-client.js";
 import {
   buildPayloads,
@@ -11,6 +11,10 @@ import {
   chunkItems,
 } from "../lib/registry-builder.js";
 import { computeDiff, formatDiffSummary } from "../lib/diff-utils.js";
+import {
+  scanRegistryItems,
+  findDepChanges,
+} from "../lib/import-scanner.js";
 import type { ItemPayload, PublishResult } from "../types/index.js";
 
 export const publishCommand = new Command("publish")
@@ -48,6 +52,63 @@ export const publishCommand = new Command("publish")
         "No items in registry.json. Run `shadregistry add <name>` first.",
       );
       process.exit(0);
+    }
+
+    // Step 3.5: Scan for dependency changes
+    const detected = scanRegistryItems(cwd, config, manifest);
+    const depChanges = findDepChanges(manifest, detected);
+
+    if (depChanges.size > 0 && !opts.force) {
+      log.info("Detected dependency changes:");
+      for (const [name, { detected: det }] of depChanges) {
+        const parts: string[] = [];
+        if (det.dependencies.length > 0)
+          parts.push(`deps: ${det.dependencies.join(", ")}`);
+        if (det.registryDependencies.length > 0)
+          parts.push(`registry: ${det.registryDependencies.join(", ")}`);
+        log.info(`  ${name}: ${parts.join(" | ")}`);
+      }
+      log.newline();
+
+      const scanAnswer = await prompt(
+        "Update registry.json with detected dependencies before publishing? (y/n) ",
+      );
+      if (scanAnswer.toLowerCase() === "y") {
+        for (const [name, { detected: det }] of depChanges) {
+          const item = manifest.items.find((i) => i.name === name);
+          if (!item) continue;
+          if (det.dependencies.length > 0) {
+            item.dependencies = det.dependencies;
+          } else {
+            delete item.dependencies;
+          }
+          if (det.registryDependencies.length > 0) {
+            item.registryDependencies = det.registryDependencies;
+          } else {
+            delete item.registryDependencies;
+          }
+        }
+        writeManifest(manifest, cwd);
+        log.success("Updated registry.json");
+        log.newline();
+      }
+    } else if (depChanges.size > 0 && opts.force) {
+      // Auto-apply with --force
+      for (const [name, { detected: det }] of depChanges) {
+        const item = manifest.items.find((i) => i.name === name);
+        if (!item) continue;
+        if (det.dependencies.length > 0) {
+          item.dependencies = det.dependencies;
+        } else {
+          delete item.dependencies;
+        }
+        if (det.registryDependencies.length > 0) {
+          item.registryDependencies = det.registryDependencies;
+        } else {
+          delete item.registryDependencies;
+        }
+      }
+      writeManifest(manifest, cwd);
     }
 
     // Step 4: Build payloads

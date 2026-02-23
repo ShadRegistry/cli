@@ -15,6 +15,18 @@ export const addCommand = new Command("add")
   )
   .option("--title <title>", "Human-readable title")
   .option("--description <desc>", "Item description", "")
+  .option(
+    "--dependencies <list>",
+    "Comma-separated npm dependencies (e.g., zod,@radix-ui/react-accordion)",
+  )
+  .option(
+    "--registry-dependencies <list>",
+    "Comma-separated registry item dependencies (e.g., button,input)",
+  )
+  .option(
+    "--dev-dependencies <list>",
+    "Comma-separated dev dependencies",
+  )
   .action(async (name: string, opts) => {
     const cwd = process.cwd();
 
@@ -145,12 +157,26 @@ export const addCommand = new Command("add")
         break;
     }
 
+    // Parse dependency flags
+    const dependencies = opts.dependencies
+      ? (opts.dependencies as string).split(",").map((s: string) => s.trim()).filter(Boolean)
+      : undefined;
+    const registryDependencies = opts.registryDependencies
+      ? (opts.registryDependencies as string).split(",").map((s: string) => s.trim()).filter(Boolean)
+      : undefined;
+    const devDependencies = opts.devDependencies
+      ? (opts.devDependencies as string).split(",").map((s: string) => s.trim()).filter(Boolean)
+      : undefined;
+
     // Add to manifest
     manifest.items.push({
       name,
       type,
       title,
       description: opts.description || undefined,
+      dependencies,
+      devDependencies,
+      registryDependencies,
       files,
     });
 

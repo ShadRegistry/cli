@@ -12,6 +12,8 @@
   "scripts": {
     "build": "bun build ./src/index.ts ./bin/shadregistry.ts --outdir ./dist --target node --format esm --splitting",
     "dev": "bun run ./bin/shadregistry.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "release": "bun run build && npm version patch && git push origin main --tags",
     "release:minor": "bun run build && npm version minor && git push origin main --tags",
@@ -46,9 +48,10 @@
     "diff": "^7.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.9.3",
+    "@types/diff": "^6.0.0",
     "@types/node": "^22.0.0",
-    "@types/diff": "^6.0.0"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   },
   "engines": {
     "node": ">=18.0.0"

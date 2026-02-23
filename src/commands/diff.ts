@@ -9,6 +9,10 @@ import {
   formatDiffSummary,
   formatItemDiff,
 } from "../lib/diff-utils.js";
+import {
+  scanRegistryItems,
+  findDepChanges,
+} from "../lib/import-scanner.js";
 import type { ItemPayload } from "../types/index.js";
 
 export const diffCommand = new Command("diff")
@@ -120,6 +124,23 @@ export const diffCommand = new Command("diff")
         if (remote) {
           log.dim(formatItemDiff(item, remote));
         }
+      }
+    }
+
+    // Show dependency scan results
+    const detected = scanRegistryItems(cwd, config, manifest);
+    const depChanges = findDepChanges(manifest, detected);
+
+    if (depChanges.size > 0) {
+      log.newline();
+      log.bold("Dependency changes detected (run `shadregistry scan` to update):");
+      for (const [name, { detected: det }] of depChanges) {
+        const parts: string[] = [];
+        if (det.dependencies.length > 0)
+          parts.push(`deps: ${det.dependencies.join(", ")}`);
+        if (det.registryDependencies.length > 0)
+          parts.push(`registry: ${det.registryDependencies.join(", ")}`);
+        log.info(`  ${name}: ${parts.join(" | ")}`);
       }
     }
   });

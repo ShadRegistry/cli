@@ -6,6 +6,7 @@ import { publishCommand } from "./commands/publish.js";
 import { addCommand } from "./commands/add.js";
 import { listCommand } from "./commands/list.js";
 import { diffCommand } from "./commands/diff.js";
+import { scanCommand } from "./commands/scan.js";
 import { VERSION } from "./lib/constants.js";
 
 const program = new Command();
@@ -24,5 +25,6 @@ program.addCommand(publishCommand);
 program.addCommand(addCommand);
 program.addCommand(listCommand);
 program.addCommand(diffCommand);
+program.addCommand(scanCommand);
 
 program.parse();
