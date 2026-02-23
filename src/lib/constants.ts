@@ -1,4 +1,3 @@
-export const VERSION = "0.1.0";
 export const DEFAULT_API_URL = "https://shadregistry.com";
 export const AUTH_DIR = ".shadregistry";
 export const AUTH_FILE = "auth.json";

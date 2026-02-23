@@ -15,9 +15,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "release": "bun run build && npm version patch && git push origin main --tags",
-    "release:minor": "bun run build && npm version minor && git push origin main --tags",
-    "release:major": "bun run build && npm version major && git push origin main --tags"
+    "preversion": "bun run typecheck && bun run test",
+    "version": "bun run build",
+    "postversion": "git push origin main --tags",
+    "release": "npm version patch",
+    "release:minor": "npm version minor",
+    "release:major": "npm version major"
   },
   "repository": {
     "type": "git",
