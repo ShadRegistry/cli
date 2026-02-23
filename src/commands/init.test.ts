@@ -322,6 +322,30 @@ describe("init command", () => {
 		expect(pkg.name).toBe("existing");
 	});
 
+	it("warns about missing deps when package.json already exists", async () => {
+		vi.mocked(resolveToken).mockReturnValue(null);
+		writeFileSync(
+			join(tmpDir, "package.json"),
+			JSON.stringify({ name: "existing" }),
+		);
+		await initCommand.parseAsync([
+			"node",
+			"shadregistry",
+			"--name",
+			"test-reg",
+			"--yes",
+		]);
+		expect(log.warn).toHaveBeenCalledWith(
+			expect.stringContaining("package.json already exists"),
+		);
+		expect(log.warn).toHaveBeenCalledWith(
+			expect.stringContaining("clsx"),
+		);
+		expect(log.warn).toHaveBeenCalledWith(
+			expect.stringContaining("tailwind-merge"),
+		);
+	});
+
 	it("creates tsconfig.json with @/ path aliases", async () => {
 		vi.mocked(resolveToken).mockReturnValue(null);
 		await initCommand.parseAsync([

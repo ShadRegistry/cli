@@ -252,6 +252,12 @@ export const initCommand = new Command("init")
 			};
 			writeFileSync(pkgJsonPath, `${JSON.stringify(pkg, null, 2)}\n`);
 			needsInstall = true;
+		} else {
+			log.warn(
+				"package.json already exists — make sure the following are installed:\n" +
+					"  npm install clsx tailwind-merge\n" +
+					"  npm install -D shadcn",
+			);
 		}
 
 		// Write tsconfig.json if it doesn't exist
