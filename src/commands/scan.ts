@@ -6,6 +6,7 @@ import {
 	scanRegistryItems,
 	findDepChanges,
 } from "../lib/import-scanner.js";
+import { validateImports } from "../lib/import-validator.js";
 import pc from "picocolors";
 
 export const scanCommand = new Command("scan")
@@ -34,12 +35,39 @@ export const scanCommand = new Command("scan")
 			process.exit(0);
 		}
 
+		// Run import validation
+		const importWarnings = validateImports(manifest, config, cwd);
+		if (importWarnings.length > 0) {
+			log.bold("Import warnings:");
+			log.newline();
+			for (const w of importWarnings) {
+				const prefix = w.severity === "error" ? pc.red("error") : pc.yellow("warn");
+				log.info(`  ${prefix} ${pc.dim(w.filePath)}`);
+				log.info(`    ${w.message}`);
+			}
+			log.newline();
+
+			const errors = importWarnings.filter((w) => w.severity === "error");
+			if (errors.length > 0) {
+				log.warn(
+					`${errors.length} import error${errors.length !== 1 ? "s" : ""} found. ` +
+					`These relative imports will break in consumer projects.`,
+				);
+				log.newline();
+			}
+		}
+
 		// Scan all items
 		log.info("Scanning source files for imports...");
 		log.newline();
 
 		const detected = scanRegistryItems(cwd, config, manifest);
 		const changes = findDepChanges(manifest, detected);
+
+		if (changes.size === 0 && importWarnings.length === 0) {
+			log.success("All dependencies in registry.json are up to date.");
+			return;
+		}
 
 		if (changes.size === 0) {
 			log.success("All dependencies in registry.json are up to date.");

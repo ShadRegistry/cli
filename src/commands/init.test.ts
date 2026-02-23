@@ -247,10 +247,26 @@ describe("init command", () => {
 			"test-reg",
 			"--yes",
 		]);
-		expect(existsSync(join(tmpDir, "registry"))).toBe(true);
+		expect(existsSync(join(tmpDir, "src/registry/new-york/items"))).toBe(true);
 	});
 
-	it("creates package.json and auto-installs", async () => {
+	it("creates components.json for shadcn build", async () => {
+		vi.mocked(resolveToken).mockReturnValue(null);
+		await initCommand.parseAsync([
+			"node",
+			"shadregistry",
+			"--name",
+			"test-reg",
+			"--yes",
+		]);
+		const componentsPath = join(tmpDir, "components.json");
+		expect(existsSync(componentsPath)).toBe(true);
+		const components = JSON.parse(readFileSync(componentsPath, "utf-8"));
+		expect(components.aliases.components).toBe("@/components");
+		expect(components.style).toBe("new-york");
+	});
+
+	it("creates package.json with shadcn and build script", async () => {
 		vi.mocked(resolveToken).mockReturnValue(null);
 		await initCommand.parseAsync([
 			"node",
@@ -263,6 +279,8 @@ describe("init command", () => {
 		expect(existsSync(pkgPath)).toBe(true);
 		const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
 		expect(pkg.devDependencies).toHaveProperty("react");
+		expect(pkg.devDependencies).toHaveProperty("shadcn");
+		expect(pkg.scripts.build).toBe("shadcn build");
 		expect(execSync).toHaveBeenCalled();
 	});
 
@@ -285,7 +303,7 @@ describe("init command", () => {
 		expect(pkg.name).toBe("existing");
 	});
 
-	it("creates tsconfig.json if missing", async () => {
+	it("creates tsconfig.json with @/ path aliases", async () => {
 		vi.mocked(resolveToken).mockReturnValue(null);
 		await initCommand.parseAsync([
 			"node",
@@ -298,6 +316,8 @@ describe("init command", () => {
 		expect(existsSync(tsconfigPath)).toBe(true);
 		const tsconfig = JSON.parse(readFileSync(tsconfigPath, "utf-8"));
 		expect(tsconfig.compilerOptions.jsx).toBe("react-jsx");
+		expect(tsconfig.compilerOptions.baseUrl).toBe(".");
+		expect(tsconfig.compilerOptions.paths["@/*"]).toEqual(["./src/*"]);
 	});
 
 	it("warns when auto-install fails", async () => {

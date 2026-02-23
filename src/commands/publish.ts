@@ -3,18 +3,14 @@ import { createInterface } from "node:readline";
 import ora from "ora";
 import { log } from "../lib/logger.js";
 import { resolveToken, resolveHostname } from "../lib/auth.js";
-import { readConfig, readManifest, writeManifest } from "../lib/config.js";
+import { readConfig } from "../lib/config.js";
 import { ApiClient } from "../lib/api-client.js";
 import {
-  buildPayloads,
+  readBuildOutput,
   validatePayload,
   chunkItems,
 } from "../lib/registry-builder.js";
 import { computeDiff, formatDiffSummary } from "../lib/diff-utils.js";
-import {
-  scanRegistryItems,
-  findDepChanges,
-} from "../lib/import-scanner.js";
 import type { ItemPayload, PublishResult } from "../types/index.js";
 
 export const publishCommand = new Command("publish")
@@ -24,6 +20,7 @@ export const publishCommand = new Command("publish")
   .option("--filter <names>", "Only publish specific items (comma-separated)")
   .option("--prune", "Delete remote items not present locally", false)
   .option("--token <token>", "Override auth token")
+  .option("--output <dir>", "Build output directory", "public/r")
   .action(async (opts) => {
     const cwd = process.cwd();
 
@@ -45,79 +42,20 @@ export const publishCommand = new Command("publish")
       process.exit(1);
     }
 
-    // Step 3: Read manifest
-    const manifest = readManifest(cwd);
-    if (!manifest || manifest.items.length === 0) {
-      log.warn(
-        "No items in registry.json. Run `shadregistry add <name>` first.",
-      );
-      process.exit(0);
-    }
-
-    // Step 3.5: Scan for dependency changes
-    const detected = scanRegistryItems(cwd, config, manifest);
-    const depChanges = findDepChanges(manifest, detected);
-
-    if (depChanges.size > 0 && !opts.force) {
-      log.info("Detected dependency changes:");
-      for (const [name, { detected: det }] of depChanges) {
-        const parts: string[] = [];
-        if (det.dependencies.length > 0)
-          parts.push(`deps: ${det.dependencies.join(", ")}`);
-        if (det.registryDependencies.length > 0)
-          parts.push(`registry: ${det.registryDependencies.join(", ")}`);
-        log.info(`  ${name}: ${parts.join(" | ")}`);
-      }
-      log.newline();
-
-      const scanAnswer = await prompt(
-        "Update registry.json with detected dependencies before publishing? (y/n) ",
-      );
-      if (scanAnswer.toLowerCase() === "y") {
-        for (const [name, { detected: det }] of depChanges) {
-          const item = manifest.items.find((i) => i.name === name);
-          if (!item) continue;
-          if (det.dependencies.length > 0) {
-            item.dependencies = det.dependencies;
-          } else {
-            delete item.dependencies;
-          }
-          if (det.registryDependencies.length > 0) {
-            item.registryDependencies = det.registryDependencies;
-          } else {
-            delete item.registryDependencies;
-          }
-        }
-        writeManifest(manifest, cwd);
-        log.success("Updated registry.json");
-        log.newline();
-      }
-    } else if (depChanges.size > 0 && opts.force) {
-      // Auto-apply with --force
-      for (const [name, { detected: det }] of depChanges) {
-        const item = manifest.items.find((i) => i.name === name);
-        if (!item) continue;
-        if (det.dependencies.length > 0) {
-          item.dependencies = det.dependencies;
-        } else {
-          delete item.dependencies;
-        }
-        if (det.registryDependencies.length > 0) {
-          item.registryDependencies = det.registryDependencies;
-        } else {
-          delete item.registryDependencies;
-        }
-      }
-      writeManifest(manifest, cwd);
-    }
-
-    // Step 4: Build payloads
+    // Step 3: Read build output
     let payloads: ItemPayload[];
     try {
-      payloads = buildPayloads(manifest, cwd);
+      payloads = readBuildOutput(cwd, opts.output);
     } catch (e: any) {
       log.error(e.message);
       process.exit(1);
+    }
+
+    if (payloads.length === 0) {
+      log.warn(
+        "No items found in build output. Run `shadcn build` first.",
+      );
+      process.exit(0);
     }
 
     // Validate each payload
@@ -129,7 +67,7 @@ export const publishCommand = new Command("publish")
       }
     }
 
-    // Step 5: Apply filter
+    // Step 4: Apply filter
     if (opts.filter) {
       const filterNames = new Set(
         (opts.filter as string).split(",").map((s: string) => s.trim()),
@@ -139,12 +77,12 @@ export const publishCommand = new Command("publish")
       // Warn about unmatched filters
       for (const name of filterNames) {
         if (!payloads.some((p) => p.name === name)) {
-          log.warn(`Filter name '${name}' does not match any local item.`);
+          log.warn(`Filter name '${name}' does not match any built item.`);
         }
       }
     }
 
-    // Step 6: Fetch remote state
+    // Step 5: Fetch remote state
     const hostname = resolveHostname();
     const client = new ApiClient(hostname, token);
 
@@ -161,17 +99,17 @@ export const publishCommand = new Command("publish")
       process.exit(3);
     }
 
-    // Step 7: Compute diff
+    // Step 6: Compute diff
     const diff = computeDiff(payloads, remoteItems);
 
-    // Step 8: Display summary
+    // Step 7: Display summary
     log.bold(`Publishing to @${config.registry}`);
     log.newline();
     log.info(formatDiffSummary(diff, config.registry));
 
     const totalToPublish = diff.newItems.length + diff.updatedItems.length;
 
-    // Step 9: Dry run exit
+    // Step 8: Dry run exit
     if (opts.dryRun) {
       process.exit(0);
     }
@@ -181,7 +119,7 @@ export const publishCommand = new Command("publish")
       process.exit(0);
     }
 
-    // Step 10: Confirm
+    // Step 9: Confirm
     if (!opts.force && totalToPublish > 0) {
       const answer = await prompt(
         `\nPublish ${totalToPublish} item${totalToPublish !== 1 ? "s" : ""}? (y/n) `,
@@ -192,7 +130,7 @@ export const publishCommand = new Command("publish")
       }
     }
 
-    // Step 11: Upload
+    // Step 10: Upload
     if (totalToPublish > 0) {
       const itemsToPublish = [...diff.newItems, ...diff.updatedItems];
       const chunks = chunkItems(itemsToPublish);
@@ -233,7 +171,7 @@ export const publishCommand = new Command("publish")
         }
       }
 
-      // Step 12: Prune
+      // Step 11: Prune
       if (opts.prune && diff.orphanedNames.length > 0) {
         if (!opts.force) {
           log.newline();
@@ -251,7 +189,7 @@ export const publishCommand = new Command("publish")
         }
       }
 
-      // Step 13: Success
+      // Step 12: Success
       log.newline();
       log.success(
         `Published ${totalCreated + totalUpdated} item${totalCreated + totalUpdated !== 1 ? "s" : ""} to @${config.registry}`,

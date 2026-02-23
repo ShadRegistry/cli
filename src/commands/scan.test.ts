@@ -24,6 +24,10 @@ vi.mock("../lib/import-scanner.js", () => ({
 	findDepChanges: vi.fn(),
 }));
 
+vi.mock("../lib/import-validator.js", () => ({
+	validateImports: vi.fn(),
+}));
+
 // Module-level variable to control readline answer
 let readlineAnswer = "y";
 
@@ -40,12 +44,13 @@ import { scanCommand } from "./scan.js";
 import { log } from "../lib/logger.js";
 import { readConfig, readManifest, writeManifest } from "../lib/config.js";
 import { scanRegistryItems, findDepChanges } from "../lib/import-scanner.js";
+import { validateImports } from "../lib/import-validator.js";
 
 let mockExit: ReturnType<typeof vi.spyOn>;
 
 const config: ProjectConfig = {
 	registry: "test",
-	sourceDir: "registry",
+	sourceDir: "src/registry/new-york/items",
 	url: "https://shadregistry.com",
 };
 
@@ -95,6 +100,7 @@ beforeEach(() => {
 	);
 	vi.mocked(scanRegistryItems).mockReturnValue(new Map());
 	vi.mocked(findDepChanges).mockReturnValue(new Map());
+	vi.mocked(validateImports).mockReturnValue([]);
 });
 
 describe("scan command", () => {
@@ -173,6 +179,25 @@ describe("scan command", () => {
 		// readlineAnswer defaults to "y"
 		await scanCommand.parseAsync(["node", "shadregistry"]);
 		expect(writeManifest).toHaveBeenCalled();
+	});
+
+	it("displays import warnings when found", async () => {
+		vi.mocked(validateImports).mockReturnValue([
+			{
+				itemName: "my-comp",
+				filePath: "src/registry/new-york/items/my-comp/components/my-comp.tsx",
+				importPath: "../../button/components/button",
+				severity: "error",
+				message: 'Cross-item relative import references item "button".',
+			},
+		]);
+		vi.mocked(findDepChanges).mockReturnValue(new Map());
+
+		await scanCommand.parseAsync(["node", "shadregistry"]);
+		expect(log.bold).toHaveBeenCalledWith("Import warnings:");
+		expect(log.warn).toHaveBeenCalledWith(
+			expect.stringContaining("import error"),
+		);
 	});
 
 	it("does not write manifest when user declines", async () => {

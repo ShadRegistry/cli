@@ -76,11 +76,6 @@ export const addCommand = new Command("add")
     const title = opts.title ?? toTitleCase(name);
     const type = opts.type as string;
 
-    // Create directory
-    if (!existsSync(itemDir)) {
-      mkdirSync(itemDir, { recursive: true });
-    }
-
     // Create starter files based on type
     const files: Array<{ path: string; type: string; target?: string }> = [];
 
@@ -88,19 +83,23 @@ export const addCommand = new Command("add")
       case "registry:component":
       case "registry:ui":
       case "registry:item": {
+        const componentsDir = join(sourceDir, name, "components");
+        mkdirSync(resolve(cwd, componentsDir), { recursive: true });
         const fileName = `${name}.tsx`;
-        const filePath = join(sourceDir, name, fileName);
+        const filePath = join(componentsDir, fileName);
         writeFileSync(
           resolve(cwd, filePath),
           generateComponentTemplate(name, title),
         );
-        files.push({ path: filePath, type });
+        files.push({ path: filePath, type: "registry:ui" });
         break;
       }
 
       case "registry:block": {
+        const componentsDir = join(sourceDir, name, "components");
+        mkdirSync(resolve(cwd, componentsDir), { recursive: true });
         const mainFile = `${name}.tsx`;
-        const mainPath = join(sourceDir, name, mainFile);
+        const mainPath = join(componentsDir, mainFile);
         writeFileSync(
           resolve(cwd, mainPath),
           generateComponentTemplate(name, title),
@@ -110,9 +109,11 @@ export const addCommand = new Command("add")
       }
 
       case "registry:hook": {
+        const hooksDir = join(sourceDir, name, "hooks");
+        mkdirSync(resolve(cwd, hooksDir), { recursive: true });
         const hookName = name.startsWith("use-") ? name : `use-${name}`;
         const fileName = `${hookName}.ts`;
-        const filePath = join(sourceDir, name, fileName);
+        const filePath = join(hooksDir, fileName);
         writeFileSync(
           resolve(cwd, filePath),
           generateHookTemplate(hookName),
@@ -122,8 +123,10 @@ export const addCommand = new Command("add")
       }
 
       case "registry:lib": {
+        const libDir = join(sourceDir, name, "lib");
+        mkdirSync(resolve(cwd, libDir), { recursive: true });
         const fileName = `${name}.ts`;
-        const filePath = join(sourceDir, name, fileName);
+        const filePath = join(libDir, fileName);
         writeFileSync(
           resolve(cwd, filePath),
           generateLibTemplate(name),
@@ -133,6 +136,7 @@ export const addCommand = new Command("add")
       }
 
       case "registry:page": {
+        mkdirSync(itemDir, { recursive: true });
         const fileName = "page.tsx";
         const filePath = join(sourceDir, name, fileName);
         writeFileSync(
@@ -144,6 +148,7 @@ export const addCommand = new Command("add")
       }
 
       case "registry:file": {
+        mkdirSync(itemDir, { recursive: true });
         const fileName = `${name}.ts`;
         const filePath = join(sourceDir, name, fileName);
         writeFileSync(resolve(cwd, filePath), `// ${name}\n`);
@@ -191,7 +196,8 @@ export const addCommand = new Command("add")
     log.info("Added to registry.json");
     log.newline();
     log.info("Edit your files, then run:");
-    log.info("  shadregistry publish");
+    log.info("  shadcn build                     # Build the registry");
+    log.info("  shadregistry publish              # Publish to the registry");
   });
 
 function toTitleCase(str: string): string {
@@ -215,7 +221,9 @@ function toCamelCase(str: string): string {
 
 function generateComponentTemplate(name: string, title: string): string {
   const componentName = toPascalCase(name);
-  return `export function ${componentName}() {
+  return `import { cn } from "@/lib/utils"
+
+export function ${componentName}() {
   return (
     <div>
       <p>${title} component</p>

@@ -36,7 +36,7 @@ let mockExit: ReturnType<typeof vi.spyOn>;
 
 const validConfig: ProjectConfig = {
 	registry: "test",
-	sourceDir: "registry",
+	sourceDir: "src/registry/new-york/items",
 	url: "https://shadregistry.com",
 };
 
@@ -172,7 +172,7 @@ describe("add command", () => {
 	});
 
 	describe("scaffolding types", () => {
-		it("creates .tsx file for registry:component", async () => {
+		it("creates .tsx file for registry:component in components/ subdirectory", async () => {
 			await addCommand.parseAsync([
 				"node",
 				"shadregistry",
@@ -181,19 +181,21 @@ describe("add command", () => {
 			expect(mockExit).not.toHaveBeenCalled();
 			const filePath = join(
 				tmpDir,
-				"registry",
+				"src/registry/new-york/items",
 				"cool-button",
+				"components",
 				"cool-button.tsx",
 			);
 			expect(existsSync(filePath)).toBe(true);
 			const content = readFileSync(filePath, "utf-8");
 			expect(content).toContain("CoolButton");
+			expect(content).toContain('@/lib/utils');
 			expect(writeManifest).toHaveBeenCalled();
 			const manifest = vi.mocked(writeManifest).mock.calls[0][0];
-			expect(manifest.items[0].type).toBe("registry:component");
+			expect(manifest.items[0].files[0].type).toBe("registry:ui");
 		});
 
-		it("creates hook with use- prefix when missing", async () => {
+		it("creates hook with use- prefix in hooks/ subdirectory", async () => {
 			await addCommand.parseAsync([
 				"node",
 				"shadregistry",
@@ -203,8 +205,9 @@ describe("add command", () => {
 			]);
 			const filePath = join(
 				tmpDir,
-				"registry",
+				"src/registry/new-york/items",
 				"toggle",
+				"hooks",
 				"use-toggle.ts",
 			);
 			expect(existsSync(filePath)).toBe(true);
@@ -222,14 +225,15 @@ describe("add command", () => {
 			]);
 			const filePath = join(
 				tmpDir,
-				"registry",
+				"src/registry/new-york/items",
 				"use-toggle",
+				"hooks",
 				"use-toggle.ts",
 			);
 			expect(existsSync(filePath)).toBe(true);
 		});
 
-		it("creates .ts file for registry:lib", async () => {
+		it("creates .ts file for registry:lib in lib/ subdirectory", async () => {
 			await addCommand.parseAsync([
 				"node",
 				"shadregistry",
@@ -239,14 +243,15 @@ describe("add command", () => {
 			]);
 			const filePath = join(
 				tmpDir,
-				"registry",
+				"src/registry/new-york/items",
 				"my-utils",
+				"lib",
 				"my-utils.ts",
 			);
 			expect(existsSync(filePath)).toBe(true);
 		});
 
-		it("creates .tsx for registry:block with component file type", async () => {
+		it("creates .tsx for registry:block in components/ subdirectory", async () => {
 			await addCommand.parseAsync([
 				"node",
 				"shadregistry",
@@ -256,8 +261,9 @@ describe("add command", () => {
 			]);
 			const filePath = join(
 				tmpDir,
-				"registry",
+				"src/registry/new-york/items",
 				"my-block",
+				"components",
 				"my-block.tsx",
 			);
 			expect(existsSync(filePath)).toBe(true);
@@ -275,7 +281,7 @@ describe("add command", () => {
 			]);
 			const filePath = join(
 				tmpDir,
-				"registry",
+				"src/registry/new-york/items",
 				"my-page",
 				"page.tsx",
 			);
@@ -294,7 +300,7 @@ describe("add command", () => {
 			]);
 			const filePath = join(
 				tmpDir,
-				"registry",
+				"src/registry/new-york/items",
 				"my-file",
 				"my-file.ts",
 			);

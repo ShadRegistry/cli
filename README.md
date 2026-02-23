@@ -2,6 +2,8 @@
 
 CLI for publishing and managing [shadcn](https://ui.shadcn.com)-compatible component registries on [ShadRegistry](https://shadregistry.com).
 
+Built on top of the standard `shadcn build` command — ShadRegistry handles publishing, hosting, and DX tooling so you don't need your own server.
+
 ## Install
 
 ```bash
@@ -26,10 +28,13 @@ shadregistry login
 shadregistry init
 
 # Add a component
-shadregistry add my-button --type registry:component
+shadregistry add my-button
 
-# Preview changes
-shadregistry diff
+# Build the registry (uses shadcn's native build)
+shadcn build
+
+# Test locally
+shadregistry dev
 
 # Publish to ShadRegistry
 shadregistry publish
@@ -52,7 +57,14 @@ Remove stored authentication credentials.
 
 ### `shadregistry init`
 
-Initialize a local registry project. Creates `shadregistry.config.json` and `registry.json`, and optionally creates a new remote registry.
+Initialize a shadcn-compatible registry project. Creates:
+
+- `shadregistry.config.json` — where to publish (registry name, API URL)
+- `registry.json` — what to publish (standard shadcn manifest format)
+- `components.json` — shadcn configuration with `@/` path aliases
+- `tsconfig.json` — with `baseUrl` and `@/*` path mapping
+- `package.json` — with `shadcn` as a devDependency and `"build": "shadcn build"` script
+- `src/registry/new-york/items/` — directory structure for component source files
 
 ```bash
 shadregistry init
@@ -61,19 +73,52 @@ shadregistry init --name my-registry --private
 
 ### `shadregistry add <name>`
 
-Scaffold a new component locally and add it to `registry.json`.
+Scaffold a new registry item locally and add it to `registry.json`. Files are placed in subdirectories matching the shadcn convention:
 
 ```bash
-shadregistry add my-button                          # Default: registry:component
-shadregistry add use-toggle --type registry:hook
-shadregistry add my-block --type registry:block
+shadregistry add my-button                          # → src/registry/new-york/items/my-button/components/my-button.tsx
+shadregistry add use-toggle --type registry:hook    # → src/registry/new-york/items/use-toggle/hooks/use-toggle.ts
+shadregistry add helpers --type registry:lib        # → src/registry/new-york/items/helpers/lib/helpers.ts
+shadregistry add my-block --type registry:block     # → src/registry/new-york/items/my-block/components/my-block.tsx
 ```
+
+Templates include `@/` alias imports (e.g., `import { cn } from "@/lib/utils"`) for portability.
 
 Supported types: `registry:component`, `registry:hook`, `registry:lib`, `registry:block`, `registry:page`, `registry:file`, `registry:style`, `registry:theme`
 
+### `shadregistry dev`
+
+Build and serve your registry locally for testing. Runs `shadcn build`, starts a local HTTP server with CORS headers, and watches for file changes.
+
+```bash
+shadregistry dev                      # Build, serve on port 4200, watch for changes
+shadregistry dev --port 3000          # Custom port
+shadregistry dev --no-watch           # Disable file watching
+shadregistry dev --output dist/r      # Custom build output directory
+```
+
+Once running, install components in a consumer project with:
+
+```bash
+npx shadcn@latest add http://localhost:4200/r/my-button.json
+```
+
+### `shadregistry scan`
+
+Scan source files to auto-detect dependencies and validate import patterns.
+
+```bash
+shadregistry scan                     # Interactive — review and confirm changes
+shadregistry scan --yes               # Auto-apply detected dependency changes
+```
+
+Detects npm dependencies and registry dependencies from import statements, and warns about relative imports that should use `@/` aliases.
+
 ### `shadregistry publish`
 
-Publish components to the remote registry. Reads local files, diffs against remote, and uploads changes.
+Publish components to the remote registry. Reads from the `shadcn build` output (`public/r/`), diffs against remote, and uploads changes.
+
+> **Note:** Run `shadcn build` (or `npm run build`) before publishing.
 
 ```bash
 shadregistry publish                  # Interactive confirmation
@@ -81,6 +126,18 @@ shadregistry publish --dry-run        # Preview only, no upload
 shadregistry publish --force          # Skip confirmation (for CI)
 shadregistry publish --prune          # Delete remote items not in local registry.json
 shadregistry publish --filter a,b     # Publish only specific items
+shadregistry publish --output dist/r  # Custom build output directory
+```
+
+### `shadregistry diff`
+
+Show what would change if `publish` were run. Reads from the build output.
+
+```bash
+shadregistry diff
+shadregistry diff --filter my-button
+shadregistry diff --json
+shadregistry diff --output dist/r     # Custom build output directory
 ```
 
 ### `shadregistry list [registry]`
@@ -93,23 +150,13 @@ shadregistry list my-registry         # List items in a registry
 shadregistry list --json              # JSON output
 ```
 
-### `shadregistry diff`
-
-Show what would change if `publish` were run (dry-run diff).
-
-```bash
-shadregistry diff
-shadregistry diff --filter my-button
-shadregistry diff --json
-```
-
 ## CI/CD
 
 Use server API keys for automated publishing. Create a server key from the ShadRegistry dashboard and set it as a CI secret.
 
 ```yaml
 # GitHub Actions example
-- run: npx shadregistry publish --force
+- run: npx shadcn build && npx shadregistry publish --force
   env:
     SHADREGISTRY_TOKEN: ${{ secrets.SHADREGISTRY_TOKEN }}
 ```
@@ -126,11 +173,22 @@ After `shadregistry init`, your project will have:
 
 ```
 my-registry/
-  shadregistry.config.json    # Where to publish (registry name, API URL)
-  registry.json               # What to publish (standard shadcn format)
-  registry/                   # Component source files
-    my-button/
-      my-button.tsx
+  components.json                            # shadcn config (style, aliases, icon library)
+  shadregistry.config.json                   # Where to publish (registry name, API URL)
+  registry.json                              # What to publish (standard shadcn manifest)
+  tsconfig.json                              # TypeScript config with @/* path aliases
+  package.json                               # Includes shadcn devDep + build script
+  src/
+    registry/
+      new-york/
+        items/
+          my-button/
+            components/
+              my-button.tsx                  # Component source (uses @/ imports)
+  public/
+    r/                                       # Build output (generated by shadcn build)
+      registry.json
+      my-button.json
 ```
 
 ## License

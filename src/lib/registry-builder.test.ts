@@ -7,7 +7,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { buildPayloads, validatePayload, chunkItems } from "./registry-builder.js";
+import { buildPayloads, validatePayload, chunkItems, readBuildOutput } from "./registry-builder.js";
 import type { RegistryManifest, ItemPayload } from "../types/index.js";
 
 let tmpDir: string;
@@ -302,5 +302,101 @@ describe("chunkItems", () => {
 		const chunks = chunkItems(items);
 		expect(chunks).toHaveLength(1);
 		expect(chunks[0]).toHaveLength(1);
+	});
+});
+
+// ── readBuildOutput ─────────────────────────────────────────────
+
+describe("readBuildOutput", () => {
+	it("reads JSON files from build output directory", () => {
+		writeFile("public/r/my-button.json", JSON.stringify({
+			name: "my-button",
+			type: "registry:ui",
+			files: [{ path: "ui/my-button.tsx", type: "registry:ui", content: "export function MyButton() {}" }],
+		}));
+
+		const payloads = readBuildOutput(tmpDir, "public/r");
+		expect(payloads).toHaveLength(1);
+		expect(payloads[0].name).toBe("my-button");
+		expect(payloads[0].type).toBe("registry:ui");
+		expect(payloads[0].files).toHaveLength(1);
+		expect(payloads[0].files[0].content).toBe("export function MyButton() {}");
+	});
+
+	it("skips registry.json index file", () => {
+		writeFile("public/r/registry.json", JSON.stringify({ items: [] }));
+		writeFile("public/r/my-button.json", JSON.stringify({
+			name: "my-button",
+			type: "registry:ui",
+			files: [],
+		}));
+
+		const payloads = readBuildOutput(tmpDir, "public/r");
+		expect(payloads).toHaveLength(1);
+		expect(payloads[0].name).toBe("my-button");
+	});
+
+	it("throws when output directory does not exist", () => {
+		expect(() => readBuildOutput(tmpDir, "public/r")).toThrow(
+			/Build output directory not found/,
+		);
+	});
+
+	it("throws when no JSON files found", () => {
+		mkdirSync(join(tmpDir, "public/r"), { recursive: true });
+		expect(() => readBuildOutput(tmpDir, "public/r")).toThrow(
+			/No item JSON files found/,
+		);
+	});
+
+	it("throws when only registry.json exists", () => {
+		writeFile("public/r/registry.json", JSON.stringify({ items: [] }));
+		expect(() => readBuildOutput(tmpDir, "public/r")).toThrow(
+			/No item JSON files found/,
+		);
+	});
+
+	it("maps shadcn theme field to itemTheme", () => {
+		writeFile("public/r/themed.json", JSON.stringify({
+			name: "themed",
+			type: "registry:ui",
+			theme: "dark",
+			files: [],
+		}));
+
+		const payloads = readBuildOutput(tmpDir, "public/r");
+		expect(payloads[0].itemTheme).toBe("dark");
+	});
+
+	it("reads multiple items sorted alphabetically", () => {
+		writeFile("public/r/zebra.json", JSON.stringify({
+			name: "zebra",
+			type: "registry:ui",
+			files: [],
+		}));
+		writeFile("public/r/alpha.json", JSON.stringify({
+			name: "alpha",
+			type: "registry:ui",
+			files: [],
+		}));
+
+		const payloads = readBuildOutput(tmpDir, "public/r");
+		expect(payloads).toHaveLength(2);
+		expect(payloads[0].name).toBe("alpha");
+		expect(payloads[1].name).toBe("zebra");
+	});
+
+	it("preserves dependencies from build output", () => {
+		writeFile("public/r/my-comp.json", JSON.stringify({
+			name: "my-comp",
+			type: "registry:ui",
+			dependencies: ["clsx", "tailwind-merge"],
+			registryDependencies: ["button"],
+			files: [],
+		}));
+
+		const payloads = readBuildOutput(tmpDir, "public/r");
+		expect(payloads[0].dependencies).toEqual(["clsx", "tailwind-merge"]);
+		expect(payloads[0].registryDependencies).toEqual(["button"]);
 	});
 });

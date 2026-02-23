@@ -1,11 +1,12 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { resolve, basename } from "node:path";
 import type {
   RegistryItem,
   RegistryManifest,
   ItemPayload,
 } from "../types/index.js";
 import { registryItemSchema } from "./validator.js";
+import { DEFAULT_BUILD_OUTPUT } from "./constants.js";
 
 /**
  * Build upload payloads from a registry manifest by reading file contents from disk.
@@ -132,4 +133,81 @@ export function chunkItems(items: ItemPayload[]): ItemPayload[][] {
   }
 
   return chunks;
+}
+
+/**
+ * Read item payloads from shadcn build output directory (public/r/).
+ * Each JSON file (except registry.json) represents one registry item.
+ */
+export function readBuildOutput(
+  cwd: string = process.cwd(),
+  outputDir?: string,
+): ItemPayload[] {
+  const dir = resolve(cwd, outputDir ?? DEFAULT_BUILD_OUTPUT);
+
+  if (!existsSync(dir)) {
+    throw new Error(
+      `Build output directory not found: ${outputDir ?? DEFAULT_BUILD_OUTPUT}\n` +
+        `  Run \`shadcn build\` first to generate the registry output.`,
+    );
+  }
+
+  const jsonFiles = readdirSync(dir)
+    .filter((f) => f.endsWith(".json") && f !== "registry.json")
+    .sort();
+
+  if (jsonFiles.length === 0) {
+    throw new Error(
+      `No item JSON files found in ${outputDir ?? DEFAULT_BUILD_OUTPUT}.\n` +
+        `  Run \`shadcn build\` first to generate the registry output.`,
+    );
+  }
+
+  const payloads: ItemPayload[] = [];
+
+  for (const file of jsonFiles) {
+    const filePath = resolve(dir, file);
+    let content: string;
+    try {
+      content = readFileSync(filePath, "utf-8");
+    } catch {
+      throw new Error(`Failed to read build output file: ${file}`);
+    }
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      throw new Error(`Invalid JSON in build output file: ${file}`);
+    }
+
+    // Map from shadcn build output format to our ItemPayload format
+    const payload: ItemPayload = {
+      name: parsed.name as string,
+      type: parsed.type as string,
+      title: parsed.title as string | undefined,
+      description: parsed.description as string | undefined,
+      author: parsed.author as string | undefined,
+      files: (parsed.files as ItemPayload["files"]) ?? [],
+      dependencies: parsed.dependencies as string[] | undefined,
+      devDependencies: parsed.devDependencies as string[] | undefined,
+      registryDependencies: parsed.registryDependencies as string[] | undefined,
+      cssVars: parsed.cssVars as ItemPayload["cssVars"],
+      css: parsed.css as string | undefined,
+      envVars: parsed.envVars as Record<string, string> | undefined,
+      docs: parsed.docs as string | undefined,
+      categories: parsed.categories as string[] | undefined,
+      meta: parsed.meta as string | undefined,
+      extends: parsed.extends as string | undefined,
+      style: parsed.style as string | undefined,
+      iconLibrary: parsed.iconLibrary as string | undefined,
+      baseColor: parsed.baseColor as string | undefined,
+      itemTheme: parsed.theme as string | undefined,
+      font: parsed.font as ItemPayload["font"],
+    };
+
+    payloads.push(payload);
+  }
+
+  return payloads;
 }

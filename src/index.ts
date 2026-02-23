@@ -8,6 +8,7 @@ import { listCommand } from "./commands/list.js";
 import { diffCommand } from "./commands/diff.js";
 import { scanCommand } from "./commands/scan.js";
 import { updateCommand } from "./commands/update.js";
+import { devCommand } from "./commands/dev.js";
 import { getVersion } from "./lib/version.js";
 import {
   checkForUpdate,
@@ -31,6 +32,7 @@ program.addCommand(addCommand);
 program.addCommand(listCommand);
 program.addCommand(diffCommand);
 program.addCommand(scanCommand);
+program.addCommand(devCommand);
 program.addCommand(updateCommand);
 
 // Start the update check concurrently with command execution

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { ProjectConfig, RegistryManifest, ItemPayload, DiffResult } from "../types/index.js";
+import type { ProjectConfig, ItemPayload, DiffResult } from "../types/index.js";
 
 const mockGet = vi.fn();
 const mockPost = vi.fn();
@@ -20,12 +20,10 @@ vi.mock("../lib/api-client.js", () => ({
 
 vi.mock("../lib/config.js", () => ({
 	readConfig: vi.fn(),
-	readManifest: vi.fn(),
-	writeManifest: vi.fn(),
 }));
 
 vi.mock("../lib/registry-builder.js", () => ({
-	buildPayloads: vi.fn(),
+	readBuildOutput: vi.fn(),
 	validatePayload: vi.fn(),
 	chunkItems: vi.fn(),
 }));
@@ -33,11 +31,6 @@ vi.mock("../lib/registry-builder.js", () => ({
 vi.mock("../lib/diff-utils.js", () => ({
 	computeDiff: vi.fn(),
 	formatDiffSummary: vi.fn(() => "summary"),
-}));
-
-vi.mock("../lib/import-scanner.js", () => ({
-	scanRegistryItems: vi.fn(),
-	findDepChanges: vi.fn(),
 }));
 
 vi.mock("../lib/logger.js", () => ({
@@ -73,29 +66,17 @@ vi.mock("node:readline", () => ({
 
 import { publishCommand } from "./publish.js";
 import { resolveToken } from "../lib/auth.js";
-import { readConfig, readManifest, writeManifest } from "../lib/config.js";
-import { buildPayloads, validatePayload, chunkItems } from "../lib/registry-builder.js";
-import { computeDiff, formatDiffSummary } from "../lib/diff-utils.js";
-import { scanRegistryItems, findDepChanges } from "../lib/import-scanner.js";
+import { readConfig } from "../lib/config.js";
+import { readBuildOutput, validatePayload, chunkItems } from "../lib/registry-builder.js";
+import { computeDiff } from "../lib/diff-utils.js";
 import { log } from "../lib/logger.js";
 
 let mockExit: ReturnType<typeof vi.spyOn>;
 
 const config: ProjectConfig = {
 	registry: "test",
-	sourceDir: "registry",
+	sourceDir: "src/registry/new-york/items",
 	url: "https://shadregistry.com",
-};
-
-const manifest: RegistryManifest = {
-	name: "test",
-	items: [
-		{
-			name: "button",
-			type: "registry:component",
-			files: [{ path: "registry/button/button.tsx", type: "registry:component" }],
-		},
-	],
 };
 
 const samplePayload: ItemPayload = {
@@ -103,8 +84,8 @@ const samplePayload: ItemPayload = {
 	type: "registry:component",
 	files: [
 		{
-			path: "registry/button/button.tsx",
-			type: "registry:component",
+			path: "src/registry/new-york/items/button/components/button.tsx",
+			type: "registry:ui",
 			content: "export function Button() {}",
 		},
 	],
@@ -150,15 +131,10 @@ beforeEach(() => {
 		}) as any);
 	vi.mocked(resolveToken).mockReturnValue("test_token");
 	vi.mocked(readConfig).mockReturnValue(config);
-	vi.mocked(readManifest).mockReturnValue(
-		JSON.parse(JSON.stringify(manifest)),
-	);
-	vi.mocked(buildPayloads).mockReturnValue([samplePayload]);
+	vi.mocked(readBuildOutput).mockReturnValue([samplePayload]);
 	vi.mocked(validatePayload).mockReturnValue(null);
 	vi.mocked(chunkItems).mockReturnValue([[samplePayload]]);
 	vi.mocked(computeDiff).mockReturnValue(emptyDiff);
-	vi.mocked(scanRegistryItems).mockReturnValue(new Map());
-	vi.mocked(findDepChanges).mockReturnValue(new Map());
 	mockGet.mockResolvedValue({ items: [] });
 	mockPost.mockResolvedValue({ created: 0, updated: 0, errors: [] });
 });
@@ -183,26 +159,26 @@ describe("publish command", () => {
 		expect(mockExit).toHaveBeenCalledWith(1);
 	});
 
-	it("exits with 0 when empty manifest", async () => {
-		vi.mocked(readManifest).mockReturnValue({ name: "test", items: [] });
-		await publishCommand
-			.parseAsync(["node", "shadregistry"])
-			.catch(() => {});
-		expect(mockExit).toHaveBeenCalledWith(0);
-		expect(log.warn).toHaveBeenCalled();
-	});
-
-	it("exits with 1 on build error", async () => {
-		vi.mocked(buildPayloads).mockImplementation(() => {
-			throw new Error("File not found");
+	it("exits with 1 when build output is missing", async () => {
+		vi.mocked(readBuildOutput).mockImplementation(() => {
+			throw new Error("Build output directory not found");
 		});
 		await publishCommand
 			.parseAsync(["node", "shadregistry"])
 			.catch(() => {});
 		expect(mockExit).toHaveBeenCalledWith(1);
 		expect(log.error).toHaveBeenCalledWith(
-			expect.stringContaining("File not found"),
+			expect.stringContaining("Build output directory not found"),
 		);
+	});
+
+	it("exits with 0 when no items in build output", async () => {
+		vi.mocked(readBuildOutput).mockReturnValue([]);
+		await publishCommand
+			.parseAsync(["node", "shadregistry"])
+			.catch(() => {});
+		expect(mockExit).toHaveBeenCalledWith(0);
+		expect(log.warn).toHaveBeenCalled();
 	});
 
 	it("exits with 1 on validation error", async () => {
@@ -290,41 +266,19 @@ describe("publish command", () => {
 		);
 	});
 
-	it("applies dependency changes with --force", async () => {
-		const depChanges = new Map([
-			[
-				"button",
-				{
-					current: { dependencies: [] as string[], registryDependencies: [] as string[] },
-					detected: { dependencies: ["clsx"], registryDependencies: [] as string[] },
-				},
-			],
-		]);
-		vi.mocked(findDepChanges).mockReturnValue(depChanges);
-		vi.mocked(computeDiff).mockReturnValue(newItemDiff);
-		mockPost.mockResolvedValue({ created: 1, updated: 0, errors: [] });
-
-		await publishCommand.parseAsync([
-			"node",
-			"shadregistry",
-			"--force",
-		]);
-		expect(writeManifest).toHaveBeenCalled();
-	});
-
 	it("filters payloads with --filter flag", async () => {
 		const payload2: ItemPayload = {
 			name: "input",
 			type: "registry:component",
 			files: [
 				{
-					path: "registry/input/input.tsx",
-					type: "registry:component",
+					path: "src/registry/new-york/items/input/components/input.tsx",
+					type: "registry:ui",
 					content: "export function Input() {}",
 				},
 			],
 		};
-		vi.mocked(buildPayloads).mockReturnValue([samplePayload, payload2]);
+		vi.mocked(readBuildOutput).mockReturnValue([samplePayload, payload2]);
 		vi.mocked(computeDiff).mockReturnValue({
 			newItems: [samplePayload],
 			updatedItems: [],

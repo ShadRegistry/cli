@@ -178,24 +178,58 @@ export const initCommand = new Command("init")
 			mkdirSync(srcDir, { recursive: true });
 		}
 
-		// Write package.json if it doesn't exist (provides React types for JSX)
+		// Write components.json if it doesn't exist (required by shadcn build)
+		const componentsJsonPath = join(cwd, "components.json");
+		if (!existsSync(componentsJsonPath)) {
+			const componentsJson = {
+				$schema: "https://ui.shadcn.com/schema.json",
+				style: "new-york",
+				rsc: false,
+				tsx: true,
+				tailwind: {
+					config: "",
+					css: "",
+					baseColor: "neutral",
+					cssVariables: true,
+					prefix: "",
+				},
+				aliases: {
+					components: "@/components",
+					utils: "@/lib/utils",
+					ui: "@/components/ui",
+					lib: "@/lib",
+					hooks: "@/hooks",
+				},
+				iconLibrary: "lucide",
+			};
+			writeFileSync(
+				componentsJsonPath,
+				`${JSON.stringify(componentsJson, null, 2)}\n`,
+			);
+		}
+
+		// Write package.json if it doesn't exist
 		const pkgJsonPath = join(cwd, "package.json");
 		let needsInstall = false;
 		if (!existsSync(pkgJsonPath)) {
 			const pkg = {
 				name: `${registryName}-registry`,
 				private: true,
+				scripts: {
+					build: "shadcn build",
+				},
 				devDependencies: {
 					react: "^19.0.0",
 					"@types/react": "^19.0.0",
 					typescript: "^5.0.0",
+					shadcn: "^3.0.0",
 				},
 			};
 			writeFileSync(pkgJsonPath, `${JSON.stringify(pkg, null, 2)}\n`);
 			needsInstall = true;
 		}
 
-		// Write tsconfig.json if it doesn't exist (enables JSX support for .tsx files)
+		// Write tsconfig.json if it doesn't exist
 		const tsconfigPath = join(cwd, "tsconfig.json");
 		if (!existsSync(tsconfigPath)) {
 			const tsconfig = {
@@ -208,8 +242,12 @@ export const initCommand = new Command("init")
 					esModuleInterop: true,
 					skipLibCheck: true,
 					noEmit: true,
+					baseUrl: ".",
+					paths: {
+						"@/*": ["./src/*"],
+					},
 				},
-				include: [`${sourceDir}/**/*.ts`, `${sourceDir}/**/*.tsx`],
+				include: ["src/**/*.ts", "src/**/*.tsx"],
 			};
 			writeFileSync(tsconfigPath, `${JSON.stringify(tsconfig, null, 2)}\n`);
 		}
@@ -232,6 +270,8 @@ export const initCommand = new Command("init")
 		log.newline();
 		log.info("Next steps:");
 		log.info(`  shadregistry add my-component    # Scaffold a new component`);
+		log.info(`  shadcn build                     # Build the registry`);
+		log.info(`  shadregistry dev                 # Preview locally`);
 		log.info(`  shadregistry publish              # Publish to the registry`);
 	});
 

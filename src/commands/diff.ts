@@ -1,18 +1,14 @@
 import { Command } from "commander";
 import { log } from "../lib/logger.js";
 import { resolveToken, resolveHostname } from "../lib/auth.js";
-import { readConfig, readManifest } from "../lib/config.js";
+import { readConfig } from "../lib/config.js";
 import { ApiClient } from "../lib/api-client.js";
-import { buildPayloads, validatePayload } from "../lib/registry-builder.js";
+import { readBuildOutput, validatePayload } from "../lib/registry-builder.js";
 import {
   computeDiff,
   formatDiffSummary,
   formatItemDiff,
 } from "../lib/diff-utils.js";
-import {
-  scanRegistryItems,
-  findDepChanges,
-} from "../lib/import-scanner.js";
 import type { ItemPayload } from "../types/index.js";
 
 export const diffCommand = new Command("diff")
@@ -20,6 +16,7 @@ export const diffCommand = new Command("diff")
   .option("--filter <names>", "Only diff specific items (comma-separated)")
   .option("--json", "Output diff as JSON", false)
   .option("--token <token>", "Override auth token")
+  .option("--output <dir>", "Build output directory", "public/r")
   .action(async (opts) => {
     const cwd = process.cwd();
 
@@ -41,19 +38,10 @@ export const diffCommand = new Command("diff")
       process.exit(1);
     }
 
-    // Manifest
-    const manifest = readManifest(cwd);
-    if (!manifest || manifest.items.length === 0) {
-      log.error(
-        "No items in registry.json. Run `shadregistry add <name>` first.",
-      );
-      process.exit(1);
-    }
-
-    // Build local payloads
+    // Read build output
     let payloads: ItemPayload[];
     try {
-      payloads = buildPayloads(manifest, cwd);
+      payloads = readBuildOutput(cwd, opts.output);
     } catch (e: any) {
       log.error(e.message);
       process.exit(1);
@@ -124,23 +112,6 @@ export const diffCommand = new Command("diff")
         if (remote) {
           log.dim(formatItemDiff(item, remote));
         }
-      }
-    }
-
-    // Show dependency scan results
-    const detected = scanRegistryItems(cwd, config, manifest);
-    const depChanges = findDepChanges(manifest, detected);
-
-    if (depChanges.size > 0) {
-      log.newline();
-      log.bold("Dependency changes detected (run `shadregistry scan` to update):");
-      for (const [name, { detected: det }] of depChanges) {
-        const parts: string[] = [];
-        if (det.dependencies.length > 0)
-          parts.push(`deps: ${det.dependencies.join(", ")}`);
-        if (det.registryDependencies.length > 0)
-          parts.push(`registry: ${det.registryDependencies.join(", ")}`);
-        log.info(`  ${name}: ${parts.join(" | ")}`);
       }
     }
   });
