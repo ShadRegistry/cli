@@ -296,6 +296,12 @@ export const initCommand = new Command("init")
 			writeFileSync(viteConfigPath, generateViteConfig());
 		}
 
+		// Write .gitignore if it doesn't exist
+		const gitignorePath = join(cwd, ".gitignore");
+		if (!existsSync(gitignorePath)) {
+			writeFileSync(gitignorePath, generateGitignore());
+		}
+
 		// Write preview app files
 		const previewDir = resolve(cwd, "src/preview");
 		if (!existsSync(previewDir)) {
@@ -490,6 +496,13 @@ export function App() {
     </div>
   );
 }
+`;
+}
+
+function generateGitignore(): string {
+	return `node_modules/
+dist/
+public/r/
 `;
 }
 

@@ -402,6 +402,21 @@ describe("init command", () => {
 		expect(viteConfig).toContain('"@"');
 	});
 
+	it("creates .gitignore with build output and node_modules", async () => {
+		vi.mocked(resolveToken).mockReturnValue(null);
+		await initCommand.parseAsync([
+			"node",
+			"shadregistry",
+			"--name",
+			"test-reg",
+			"--yes",
+		]);
+		const gitignore = readFileSync(join(tmpDir, ".gitignore"), "utf-8");
+		expect(gitignore).toContain("node_modules/");
+		expect(gitignore).toContain("public/r/");
+		expect(gitignore).toContain("dist/");
+	});
+
 	it("includes vite deps in generated package.json", async () => {
 		vi.mocked(resolveToken).mockReturnValue(null);
 		await initCommand.parseAsync([
