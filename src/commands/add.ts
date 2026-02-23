@@ -53,7 +53,7 @@ export const addCommand = new Command("add")
     const config = readConfig(cwd);
     if (!config) {
       log.error(
-        "No shadregistry.config.json found. Run `shadregistry init` first.",
+        "No shadregistry.config.json found. Run `shadr init` first.",
       );
       process.exit(1);
     }
@@ -61,7 +61,7 @@ export const addCommand = new Command("add")
     // Read manifest
     const manifest = readManifest(cwd);
     if (!manifest) {
-      log.error("No registry.json found. Run `shadregistry init` first.");
+      log.error("No registry.json found. Run `shadr init` first.");
       process.exit(1);
     }
 
@@ -199,9 +199,9 @@ export const addCommand = new Command("add")
     log.info("Added to registry.json");
     log.newline();
     log.info("Edit your files, then run:");
-    log.info("  shadregistry dev --preview       # Preview in browser");
-    log.info("  shadcn build                     # Build the registry");
-    log.info("  shadregistry publish              # Publish to the registry");
+    log.info("  shadr dev --preview       # Preview in browser");
+    log.info("  shadcn build              # Build the registry");
+    log.info("  shadr publish             # Publish to the registry");
   });
 
 function toTitleCase(str: string): string {
@@ -289,11 +289,15 @@ function updatePreviewRegistry(
   const content = readFileSync(registryPath, "utf-8");
 
   // Check if already registered
-  if (content.includes(`"${name}"`)) return;
+  if (content.includes(`${name}: lazy(`)) return;
 
   const componentName = toPascalCase(name);
   const importPath = `@/${sourceDir.replace(/^src\//, "")}/${name}/components/${name}`;
-  const entry = `  "${name}": lazy(() => import("${importPath}").then(m => ({ default: m.${componentName} }))),`;
+  const entry = `  ${name}: lazy(() =>
+    import("${importPath}").then((m) => ({
+      default: m.${componentName},
+    })),
+  ),`;
 
   const updated = content.replace(
     /^(\};)\s*$/m,

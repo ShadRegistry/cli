@@ -25,7 +25,7 @@ export const updateCommand = new Command("update")
 		log.newline();
 
 		if (opts.check) {
-			log.info("Run `shadregistry update` to update.");
+			log.info("Run `shadr update` to update.");
 			return;
 		}
 

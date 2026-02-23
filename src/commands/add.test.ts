@@ -397,7 +397,7 @@ describe("add command", () => {
 				join(tmpDir, "src/preview/registry.ts"),
 				"utf-8",
 			);
-			expect(content).toContain('"cool-button"');
+			expect(content).toContain("cool-button: lazy(");
 			expect(content).toContain("CoolButton");
 		});
 

@@ -21,7 +21,7 @@ export const devCommand = new Command("dev")
     const config = readConfig(cwd);
     if (!config) {
       log.error(
-        "No shadregistry.config.json found. Run `shadregistry init` first.",
+        "No shadregistry.config.json found. Run `shadr init` first.",
       );
       process.exit(1);
     }
@@ -199,7 +199,7 @@ function startVitePreview(cwd: string, port: number): ChildProcess {
   const viteConfigPath = resolve(cwd, "vite.config.ts");
   if (!existsSync(viteConfigPath)) {
     log.warn(
-      "No vite.config.ts found. Run `shadregistry init` to set up the preview app.",
+      "No vite.config.ts found. Run `shadr init` to set up the preview app.",
     );
     return spawn("true");
   }
@@ -207,7 +207,7 @@ function startVitePreview(cwd: string, port: number): ChildProcess {
   const previewDir = resolve(cwd, "src/preview");
   if (!existsSync(previewDir)) {
     log.warn(
-      "No src/preview/ directory found. Run `shadregistry init` to set up the preview app.",
+      "No src/preview/ directory found. Run `shadr init` to set up the preview app.",
     );
     return spawn("true");
   }

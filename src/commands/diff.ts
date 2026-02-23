@@ -24,7 +24,7 @@ export const diffCommand = new Command("diff")
     const token = resolveToken(opts.token);
     if (!token) {
       log.error(
-        "Not authenticated. Run `shadregistry login` or set SHADREGISTRY_TOKEN.",
+        "Not authenticated. Run `shadr login` or set SHADREGISTRY_TOKEN.",
       );
       process.exit(2);
     }
@@ -33,7 +33,7 @@ export const diffCommand = new Command("diff")
     const config = readConfig(cwd);
     if (!config) {
       log.error(
-        "No shadregistry.config.json found. Run `shadregistry init` first.",
+        "No shadregistry.config.json found. Run `shadr init` first.",
       );
       process.exit(1);
     }

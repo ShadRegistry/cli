@@ -332,10 +332,12 @@ export const initCommand = new Command("init")
 		log.success("Initialized shadregistry project.");
 		log.newline();
 		log.info("Next steps:");
-		log.info(`  shadregistry add my-component    # Scaffold a new component`);
-		log.info(`  shadregistry dev --preview       # Preview components in browser`);
-		log.info(`  shadcn build                     # Build the registry`);
-		log.info(`  shadregistry publish              # Publish to the registry`);
+		log.info(`  shadr add my-component    # Scaffold a new component`);
+		log.info(`  shadr dev --preview       # Preview components in browser`);
+		log.info(`  shadcn build              # Build the registry`);
+		log.info(`  shadr publish             # Publish to the registry`);
+		log.newline();
+		log.dim("  Tip: shadr is short for shadregistry");
 	});
 
 function prompt(question: string): Promise<string> {
@@ -419,7 +421,9 @@ import { createRoot } from "react-dom/client";
 import "./globals.css";
 import { App } from "./App";
 
-createRoot(document.getElementById("root")!).render(
+const root = document.getElementById("root");
+if (!root) throw new Error("Root element not found");
+createRoot(root).render(
   <StrictMode>
     <App />
   </StrictMode>

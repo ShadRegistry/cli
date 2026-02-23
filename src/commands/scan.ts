@@ -21,7 +21,7 @@ export const scanCommand = new Command("scan")
 		const config = readConfig(cwd);
 		if (!config) {
 			log.error(
-				"No shadregistry.config.json found. Run `shadregistry init` first.",
+				"No shadregistry.config.json found. Run `shadr init` first.",
 			);
 			process.exit(1);
 		}
@@ -30,7 +30,7 @@ export const scanCommand = new Command("scan")
 		const manifest = readManifest(cwd);
 		if (!manifest || manifest.items.length === 0) {
 			log.warn(
-				"No items in registry.json. Run `shadregistry add <name>` first.",
+				"No items in registry.json. Run `shadr add <name>` first.",
 			);
 			process.exit(0);
 		}

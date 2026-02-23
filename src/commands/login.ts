@@ -70,7 +70,7 @@ async function loginWithDeviceAuth(hostname: string) {
     try {
       const whoami = await client.get<{ username: string }>("/api/cli/whoami");
       log.info(
-        `Already logged in as @${whoami.username}. Run \`shadregistry logout\` first to switch accounts.`,
+        `Already logged in as @${whoami.username}. Run \`shadr logout\` first to switch accounts.`,
       );
       return;
     } catch {
@@ -143,7 +143,7 @@ async function loginWithDeviceAuth(hostname: string) {
         continue;
       }
       if (result.error === "expired_token") {
-        spinner.fail("Code expired. Run `shadregistry login` again.");
+        spinner.fail("Code expired. Run `shadr login` again.");
         process.exit(2);
       }
       if (result.error) {
@@ -167,7 +167,7 @@ async function loginWithDeviceAuth(hostname: string) {
     }
   }
 
-  spinner.fail("Login timed out. Run `shadregistry login` again.");
+  spinner.fail("Login timed out. Run `shadr login` again.");
   process.exit(2);
 }
 

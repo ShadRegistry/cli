@@ -12,7 +12,7 @@ export const listCommand = new Command("list")
     const token = resolveToken(opts.token);
     if (!token) {
       log.error(
-        "Not authenticated. Run `shadregistry login` or set SHADREGISTRY_TOKEN.",
+        "Not authenticated. Run `shadr login` or set SHADREGISTRY_TOKEN.",
       );
       process.exit(2);
     }
@@ -45,7 +45,7 @@ async function listRegistries(client: ApiClient, asJson: boolean) {
     }
 
     if (data.registries.length === 0) {
-      log.info("No registries found. Run `shadregistry init` to create one.");
+      log.info("No registries found. Run `shadr init` to create one.");
       return;
     }
 
@@ -88,7 +88,7 @@ async function listItems(
 
     if (data.items.length === 0) {
       log.info(
-        `No items in registry '${registry}'. Run \`shadregistry add <name>\` to add one.`,
+        `No items in registry '${registry}'. Run \`shadr add <name>\` to add one.`,
       );
       return;
     }
