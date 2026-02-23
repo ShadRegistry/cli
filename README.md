@@ -18,6 +18,8 @@ npm install -g @shadregistry/cli
 bunx @shadregistry/cli
 ```
 
+> **Tip:** Use `shadr` as a shorthand for `shadregistry` in all commands (e.g. `shadr dev --preview`).
+
 ## Quick Start
 
 ```bash

@@ -4,7 +4,8 @@
   "description": "CLI for publishing and managing shadcn-compatible component registries on ShadRegistry",
   "type": "module",
   "bin": {
-    "shadregistry": "./dist/bin/shadregistry.js"
+    "shadregistry": "./dist/bin/shadregistry.js",
+    "shadr": "./dist/bin/shadregistry.js"
   },
   "files": [
     "dist"
