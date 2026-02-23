@@ -1,7 +1,18 @@
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+	copyFileSync,
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
+import https from "node:https";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
+import { tmpdir } from "node:os";
 import { Command } from "commander";
 import { ApiClient } from "../lib/api-client.js";
 import { resolveHostname, resolveToken } from "../lib/auth.js";
@@ -11,7 +22,7 @@ import {
 	writeConfig,
 	writeManifest,
 } from "../lib/config.js";
-import { DEFAULT_SOURCE_DIR } from "../lib/constants.js";
+import { DEFAULT_SOURCE_DIR, DEFAULT_TEMPLATE } from "../lib/constants.js";
 import { log } from "../lib/logger.js";
 
 export const initCommand = new Command("init")
@@ -23,6 +34,11 @@ export const initCommand = new Command("init")
 		"--source-dir <dir>",
 		"Source directory for components",
 		DEFAULT_SOURCE_DIR,
+	)
+	.option(
+		"--template <repo>",
+		"GitHub repo to use as template (e.g., user/repo)",
+		DEFAULT_TEMPLATE,
 	)
 	.option("-y, --yes", "Accept all defaults", false)
 	.action(async (opts) => {
@@ -159,7 +175,16 @@ export const initCommand = new Command("init")
 			cwd,
 		);
 
-		// Write registry.json if it doesn't exist
+		// Download template or fall back to built-in generators
+		const hadPackageJson = existsSync(join(cwd, "package.json"));
+		const downloaded = await downloadTemplate(cwd, opts.template);
+		if (downloaded) {
+			patchTemplateFiles(cwd, { registryName, sourceDir, hostname });
+		} else {
+			generateFallbackFiles(cwd, registryName, sourceDir);
+		}
+
+		// Write registry.json if it doesn't exist (always use writeManifest for consistency)
 		if (!manifestExists(cwd)) {
 			writeManifest(
 				{
@@ -178,147 +203,14 @@ export const initCommand = new Command("init")
 			mkdirSync(srcDir, { recursive: true });
 		}
 
-		// Create src/lib/utils.ts (cn helper used by component templates)
-		const utilsDir = resolve(cwd, "src/lib");
-		if (!existsSync(utilsDir)) {
-			mkdirSync(utilsDir, { recursive: true });
-		}
-		const utilsPath = join(utilsDir, "utils.ts");
-		if (!existsSync(utilsPath)) {
-			writeFileSync(
-				utilsPath,
-				[
-					'import { type ClassValue, clsx } from "clsx";',
-					'import { twMerge } from "tailwind-merge";',
-					"",
-					"export function cn(...inputs: ClassValue[]) {",
-					"  return twMerge(clsx(inputs));",
-					"}",
-					"",
-				].join("\n"),
-			);
-		}
-
-		// Write components.json if it doesn't exist (required by shadcn build)
-		const componentsJsonPath = join(cwd, "components.json");
-		if (!existsSync(componentsJsonPath)) {
-			const componentsJson = {
-				$schema: "https://ui.shadcn.com/schema.json",
-				style: "new-york",
-				rsc: false,
-				tsx: true,
-				tailwind: {
-					config: "",
-					css: "",
-					baseColor: "neutral",
-					cssVariables: true,
-					prefix: "",
-				},
-				aliases: {
-					components: "@/components",
-					utils: "@/lib/utils",
-					ui: "@/components/ui",
-					lib: "@/lib",
-					hooks: "@/hooks",
-				},
-				iconLibrary: "lucide",
-			};
-			writeFileSync(
-				componentsJsonPath,
-				`${JSON.stringify(componentsJson, null, 2)}\n`,
-			);
-		}
-
-		// Write package.json if it doesn't exist
-		const pkgJsonPath = join(cwd, "package.json");
-		let needsInstall = false;
-		if (!existsSync(pkgJsonPath)) {
-			const pkg = {
-				name: `${registryName}-registry`,
-				private: true,
-				scripts: {
-					build: "shadcn build",
-					dev: "shadregistry dev --preview",
-				},
-				dependencies: {
-					clsx: "^2.1.1",
-					"tailwind-merge": "^3.0.0",
-				},
-				devDependencies: {
-					react: "^19.0.0",
-					"react-dom": "^19.0.0",
-					"@types/react": "^19.0.0",
-					"@types/react-dom": "^19.0.0",
-					typescript: "^5.0.0",
-					shadcn: "^3.0.0",
-					vite: "^6.0.0",
-					"@vitejs/plugin-react": "^4.0.0",
-					tailwindcss: "^4.0.0",
-					"@tailwindcss/vite": "^4.0.0",
-				},
-			};
-			writeFileSync(pkgJsonPath, `${JSON.stringify(pkg, null, 2)}\n`);
-			needsInstall = true;
-		} else {
+		// Warn about deps if package.json already existed
+		const needsInstall = !hadPackageJson && existsSync(join(cwd, "package.json"));
+		if (hadPackageJson) {
 			log.warn(
 				"package.json already exists — make sure the following are installed:\n" +
 					"  npm install clsx tailwind-merge\n" +
 					"  npm install -D shadcn react-dom vite @vitejs/plugin-react tailwindcss @tailwindcss/vite",
 			);
-		}
-
-		// Write tsconfig.json if it doesn't exist
-		const tsconfigPath = join(cwd, "tsconfig.json");
-		if (!existsSync(tsconfigPath)) {
-			const tsconfig = {
-				compilerOptions: {
-					target: "ES2020",
-					module: "ESNext",
-					moduleResolution: "bundler",
-					jsx: "react-jsx",
-					strict: true,
-					esModuleInterop: true,
-					skipLibCheck: true,
-					noEmit: true,
-					baseUrl: ".",
-					paths: {
-						"@/*": ["./src/*"],
-					},
-				},
-				include: ["src/**/*.ts", "src/**/*.tsx"],
-			};
-			writeFileSync(tsconfigPath, `${JSON.stringify(tsconfig, null, 2)}\n`);
-		}
-
-		// Write vite.config.ts if it doesn't exist
-		const viteConfigPath = join(cwd, "vite.config.ts");
-		if (!existsSync(viteConfigPath)) {
-			writeFileSync(viteConfigPath, generateViteConfig());
-		}
-
-		// Write .gitignore if it doesn't exist
-		const gitignorePath = join(cwd, ".gitignore");
-		if (!existsSync(gitignorePath)) {
-			writeFileSync(gitignorePath, generateGitignore());
-		}
-
-		// Write preview app files
-		const previewDir = resolve(cwd, "src/preview");
-		if (!existsSync(previewDir)) {
-			mkdirSync(previewDir, { recursive: true });
-		}
-		const previewFiles = [
-			{ name: "index.html", content: generatePreviewHtml() },
-			{ name: "globals.css", content: generatePreviewCss() },
-			{ name: "main.tsx", content: generatePreviewMain() },
-			{ name: "App.tsx", content: generatePreviewApp() },
-			{ name: "registry.ts", content: generatePreviewRegistry() },
-		];
-		for (const file of previewFiles) {
-			const filePath = join(previewDir, file.name);
-			if (!existsSync(filePath)) {
-				writeFileSync(filePath, file.content);
-			}
 		}
 
 		// Auto-install dependencies if we created package.json
@@ -377,7 +269,160 @@ function detectPackageManager(cwd: string): string {
 	return "npm";
 }
 
-// ── Preview app file generators ─────────────────────────────────
+// ── Template download & patching ────────────────────────────────
+
+async function downloadTemplate(
+	cwd: string,
+	templateRepo: string,
+): Promise<boolean> {
+	const tarballUrl = templateRepo.startsWith("http")
+		? templateRepo
+		: `https://github.com/${templateRepo}/archive/main.tar.gz`;
+
+	const tmp = join(tmpdir(), `shadr-template-${Date.now()}`);
+	const tarPath = join(tmp, "template.tar.gz");
+
+	try {
+		mkdirSync(tmp, { recursive: true });
+
+		// Download tarball
+		await new Promise<void>((resolve, reject) => {
+			const follow = (url: string, redirects = 0) => {
+				if (redirects > 5) {
+					reject(new Error("Too many redirects"));
+					return;
+				}
+				https
+					.get(url, (resp) => {
+						if (
+							resp.statusCode === 301 ||
+							resp.statusCode === 302
+						) {
+							const loc = resp.headers.location;
+							if (!loc) {
+								reject(new Error("Redirect without location"));
+								return;
+							}
+							resp.resume();
+							follow(loc, redirects + 1);
+							return;
+						}
+						if (!resp.statusCode || resp.statusCode >= 400) {
+							reject(new Error(`HTTP ${resp.statusCode}`));
+							return;
+						}
+						const chunks: Buffer[] = [];
+						resp.on("data", (c: Buffer) => chunks.push(c));
+						resp.on("end", () => {
+							writeFileSync(tarPath, Buffer.concat(chunks));
+							resolve();
+						});
+						resp.on("error", reject);
+					})
+					.on("error", reject);
+			};
+			follow(tarballUrl);
+		});
+
+		// Extract tarball
+		execSync(`tar xzf "${tarPath}" -C "${tmp}"`, { stdio: "pipe" });
+
+		// Find extracted directory (e.g. "registry-template-main")
+		const dirs = readdirSync(tmp).filter(
+			(e) =>
+				e !== "template.tar.gz" &&
+				statSync(join(tmp, e)).isDirectory(),
+		);
+		if (dirs.length === 0)
+			throw new Error("No directory found in archive");
+		const extracted = join(tmp, dirs[0]);
+
+		// Copy files to cwd, skip existing
+		copyDirRecursive(extracted, cwd);
+
+		log.success("Downloaded template from GitHub.");
+		return true;
+	} catch (e: unknown) {
+		log.warn(
+			`Failed to download template: ${e instanceof Error ? e.message : "Unknown error"}. Using built-in fallback.`,
+		);
+		return false;
+	} finally {
+		try {
+			rmSync(tmp, { recursive: true, force: true });
+		} catch {}
+	}
+}
+
+function copyDirRecursive(src: string, dest: string): void {
+	for (const entry of readdirSync(src)) {
+		const srcPath = join(src, entry);
+		const destPath = join(dest, entry);
+		if (statSync(srcPath).isDirectory()) {
+			if (!existsSync(destPath))
+				mkdirSync(destPath, { recursive: true });
+			copyDirRecursive(srcPath, destPath);
+		} else if (!existsSync(destPath)) {
+			mkdirSync(join(destPath, ".."), { recursive: true });
+			copyFileSync(srcPath, destPath);
+		}
+	}
+}
+
+function patchTemplateFiles(
+	cwd: string,
+	vars: { registryName: string; sourceDir: string; hostname: string },
+): void {
+	const replacements: Record<string, string> = {
+		"{{REGISTRY_NAME}}": vars.registryName,
+		"{{SOURCE_DIR}}": vars.sourceDir,
+		"{{API_URL}}": vars.hostname,
+	};
+
+	for (const file of [
+		"package.json",
+		"shadregistry.config.json",
+		"registry.json",
+	]) {
+		const p = join(cwd, file);
+		if (!existsSync(p)) continue;
+		let content = readFileSync(p, "utf-8");
+		for (const [placeholder, value] of Object.entries(replacements)) {
+			content = content.replaceAll(placeholder, value);
+		}
+		writeFileSync(p, content);
+	}
+}
+
+function generateFallbackFiles(
+	cwd: string,
+	registryName: string,
+	sourceDir: string,
+): void {
+	mkdirSync(join(cwd, "src/preview"), { recursive: true });
+	mkdirSync(join(cwd, "src/lib"), { recursive: true });
+
+	const w = (p: string, content: string) => {
+		if (!existsSync(p)) {
+			mkdirSync(join(p, ".."), { recursive: true });
+			writeFileSync(p, content);
+		}
+	};
+
+	w(join(cwd, ".gitignore"), generateGitignore());
+	w(join(cwd, "components.json"), generateComponentsJson());
+	w(join(cwd, "tsconfig.json"), generateTsconfig());
+	w(join(cwd, "vite.config.ts"), generateViteConfig());
+	w(join(cwd, "package.json"), generatePackageJson(registryName));
+	w(join(cwd, "src/lib/utils.ts"), generateUtils());
+	w(join(cwd, "src/preview/index.html"), generatePreviewHtml());
+	w(join(cwd, "src/preview/globals.css"), generatePreviewCss());
+	w(join(cwd, "src/preview/main.tsx"), generatePreviewMain());
+	w(join(cwd, "src/preview/App.tsx"), generatePreviewApp());
+	w(join(cwd, "src/preview/registry.ts"), generatePreviewRegistry());
+}
+
+// ── Built-in file generators (offline fallback) ─────────────────
 
 function generateViteConfig(): string {
 	return `import { defineConfig } from "vite";
@@ -512,5 +557,96 @@ function generatePreviewRegistry(): string {
 export const components: Record<string, React.LazyExoticComponent<ComponentType>> = {
   // Components are added here by \`shadregistry add\`
 };
+`;
+}
+
+function generateComponentsJson(): string {
+	return `${JSON.stringify(
+		{
+			$schema: "https://ui.shadcn.com/schema.json",
+			style: "new-york",
+			rsc: false,
+			tsx: true,
+			tailwind: {
+				config: "",
+				css: "",
+				baseColor: "neutral",
+				cssVariables: true,
+				prefix: "",
+			},
+			aliases: {
+				components: "@/components",
+				utils: "@/lib/utils",
+				ui: "@/components/ui",
+				lib: "@/lib",
+				hooks: "@/hooks",
+			},
+			iconLibrary: "lucide",
+		},
+		null,
+		2,
+	)}\n`;
+}
+
+function generateTsconfig(): string {
+	return `${JSON.stringify(
+		{
+			compilerOptions: {
+				target: "ES2020",
+				module: "ESNext",
+				moduleResolution: "bundler",
+				jsx: "react-jsx",
+				strict: true,
+				esModuleInterop: true,
+				skipLibCheck: true,
+				noEmit: true,
+				baseUrl: ".",
+				paths: { "@/*": ["./src/*"] },
+			},
+			include: ["src/**/*.ts", "src/**/*.tsx"],
+		},
+		null,
+		2,
+	)}\n`;
+}
+
+function generatePackageJson(registryName: string): string {
+	return `${JSON.stringify(
+		{
+			name: `${registryName}-registry`,
+			private: true,
+			scripts: {
+				build: "shadcn build",
+				dev: "shadregistry dev --preview",
+			},
+			dependencies: {
+				clsx: "^2.1.1",
+				"tailwind-merge": "^3.0.0",
+			},
+			devDependencies: {
+				react: "^19.0.0",
+				"react-dom": "^19.0.0",
+				"@types/react": "^19.0.0",
+				"@types/react-dom": "^19.0.0",
+				typescript: "^5.0.0",
+				shadcn: "^3.0.0",
+				vite: "^6.0.0",
+				"@vitejs/plugin-react": "^4.0.0",
+				tailwindcss: "^4.0.0",
+				"@tailwindcss/vite": "^4.0.0",
+			},
+		},
+		null,
+		2,
+	)}\n`;
+}
+
+function generateUtils(): string {
+	return `import { type ClassValue, clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
 `;
 }

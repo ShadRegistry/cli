@@ -62,6 +62,15 @@ vi.mock("node:child_process", () => ({
 	execSync: vi.fn(),
 }));
 
+// Mock https to prevent real network calls — template download always falls back
+vi.mock("node:https", () => ({
+	default: {
+		get: vi.fn(() => {
+			throw new Error("Network unavailable");
+		}),
+	},
+}));
+
 import { initCommand } from "./init.js";
 import { resolveToken } from "../lib/auth.js";
 import {
@@ -447,5 +456,61 @@ describe("init command", () => {
 		]);
 		const content = readFileSync(join(tmpDir, "src/preview/App.tsx"), "utf-8");
 		expect(content).toBe("custom content");
+	});
+
+	it("falls back to built-in generators when template download fails", async () => {
+		vi.mocked(resolveToken).mockReturnValue(null);
+		await initCommand.parseAsync([
+			"node",
+			"shadregistry",
+			"--name",
+			"test-reg",
+			"--yes",
+		]);
+		expect(log.warn).toHaveBeenCalledWith(
+			expect.stringContaining("Using built-in fallback"),
+		);
+		// Verify fallback created all expected files
+		expect(existsSync(join(tmpDir, "package.json"))).toBe(true);
+		expect(existsSync(join(tmpDir, "components.json"))).toBe(true);
+		expect(existsSync(join(tmpDir, "tsconfig.json"))).toBe(true);
+		expect(existsSync(join(tmpDir, "vite.config.ts"))).toBe(true);
+		expect(existsSync(join(tmpDir, "src/lib/utils.ts"))).toBe(true);
+		expect(existsSync(join(tmpDir, ".gitignore"))).toBe(true);
+	});
+
+	it("accepts --template flag for custom template repo", async () => {
+		vi.mocked(resolveToken).mockReturnValue(null);
+		await initCommand.parseAsync([
+			"node",
+			"shadregistry",
+			"--name",
+			"test-reg",
+			"--template",
+			"myorg/my-template",
+			"--yes",
+		]);
+		// Download fails (mocked), falls back to built-in generators
+		expect(log.warn).toHaveBeenCalledWith(
+			expect.stringContaining("Using built-in fallback"),
+		);
+		expect(log.success).toHaveBeenCalledWith(
+			expect.stringContaining("Initialized"),
+		);
+	});
+
+	it("includes registry name in fallback package.json", async () => {
+		vi.mocked(resolveToken).mockReturnValue(null);
+		await initCommand.parseAsync([
+			"node",
+			"shadregistry",
+			"--name",
+			"my-cool-lib",
+			"--yes",
+		]);
+		const pkg = JSON.parse(
+			readFileSync(join(tmpDir, "package.json"), "utf-8"),
+		);
+		expect(pkg.name).toBe("my-cool-lib-registry");
 	});
 });
