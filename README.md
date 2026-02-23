@@ -5,7 +5,15 @@ CLI for publishing and managing [shadcn](https://ui.shadcn.com)-compatible compo
 ## Install
 
 ```bash
-npm install -g shadregistry
+npx @shadregistry/cli
+```
+
+Or install globally:
+
+```bash
+npm install -g @shadregistry/cli
+# or
+bunx @shadregistry/cli
 ```
 
 ## Quick Start
