@@ -452,6 +452,7 @@ export function App() {
           )}
           {names.map((name) => (
             <button
+              type="button"
               key={name}
               onClick={() => setActive(name)}
               style={{
