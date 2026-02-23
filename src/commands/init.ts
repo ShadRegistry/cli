@@ -238,6 +238,7 @@ export const initCommand = new Command("init")
 				private: true,
 				scripts: {
 					build: "shadcn build",
+					dev: "shadregistry dev --preview",
 				},
 				dependencies: {
 					clsx: "^2.1.1",
@@ -245,9 +246,15 @@ export const initCommand = new Command("init")
 				},
 				devDependencies: {
 					react: "^19.0.0",
+					"react-dom": "^19.0.0",
 					"@types/react": "^19.0.0",
+					"@types/react-dom": "^19.0.0",
 					typescript: "^5.0.0",
 					shadcn: "^3.0.0",
+					vite: "^6.0.0",
+					"@vitejs/plugin-react": "^4.0.0",
+					tailwindcss: "^4.0.0",
+					"@tailwindcss/vite": "^4.0.0",
 				},
 			};
 			writeFileSync(pkgJsonPath, `${JSON.stringify(pkg, null, 2)}\n`);
@@ -256,7 +263,7 @@ export const initCommand = new Command("init")
 			log.warn(
 				"package.json already exists — make sure the following are installed:\n" +
 					"  npm install clsx tailwind-merge\n" +
-					"  npm install -D shadcn",
+					"  npm install -D shadcn react-dom vite @vitejs/plugin-react tailwindcss @tailwindcss/vite",
 			);
 		}
 
@@ -283,6 +290,31 @@ export const initCommand = new Command("init")
 			writeFileSync(tsconfigPath, `${JSON.stringify(tsconfig, null, 2)}\n`);
 		}
 
+		// Write vite.config.ts if it doesn't exist
+		const viteConfigPath = join(cwd, "vite.config.ts");
+		if (!existsSync(viteConfigPath)) {
+			writeFileSync(viteConfigPath, generateViteConfig());
+		}
+
+		// Write preview app files
+		const previewDir = resolve(cwd, "src/preview");
+		if (!existsSync(previewDir)) {
+			mkdirSync(previewDir, { recursive: true });
+		}
+		const previewFiles = [
+			{ name: "index.html", content: generatePreviewHtml() },
+			{ name: "globals.css", content: generatePreviewCss() },
+			{ name: "main.tsx", content: generatePreviewMain() },
+			{ name: "App.tsx", content: generatePreviewApp() },
+			{ name: "registry.ts", content: generatePreviewRegistry() },
+		];
+		for (const file of previewFiles) {
+			const filePath = join(previewDir, file.name);
+			if (!existsSync(filePath)) {
+				writeFileSync(filePath, file.content);
+			}
+		}
+
 		// Auto-install dependencies if we created package.json
 		if (needsInstall) {
 			const pm = detectPackageManager(cwd);
@@ -301,8 +333,8 @@ export const initCommand = new Command("init")
 		log.newline();
 		log.info("Next steps:");
 		log.info(`  shadregistry add my-component    # Scaffold a new component`);
+		log.info(`  shadregistry dev --preview       # Preview components in browser`);
 		log.info(`  shadcn build                     # Build the registry`);
-		log.info(`  shadregistry dev                 # Preview locally`);
 		log.info(`  shadregistry publish              # Publish to the registry`);
 	});
 
@@ -335,4 +367,132 @@ function detectPackageManager(cwd: string): string {
 	if (existsSync(join(cwd, "pnpm-lock.yaml"))) return "pnpm";
 	if (existsSync(join(cwd, "yarn.lock"))) return "yarn";
 	return "npm";
+}
+
+// ── Preview app file generators ─────────────────────────────────
+
+function generateViteConfig(): string {
+	return `import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import path from "path";
+
+export default defineConfig({
+  root: "src/preview",
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
+  server: {
+    port: 4201,
+  },
+});
+`;
+}
+
+function generatePreviewHtml(): string {
+	return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Registry Preview</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>
+`;
+}
+
+function generatePreviewCss(): string {
+	return `@import "tailwindcss";
+`;
+}
+
+function generatePreviewMain(): string {
+	return `import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import "./globals.css";
+import { App } from "./App";
+
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>
+);
+`;
+}
+
+function generatePreviewApp(): string {
+	return `import { Suspense, useState } from "react";
+import { components } from "./registry";
+
+export function App() {
+  const names = Object.keys(components);
+  const [active, setActive] = useState<string>(names[0] ?? "");
+
+  const ActiveComponent = active ? components[active] : null;
+
+  return (
+    <div style={{ minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
+      <header style={{ borderBottom: "1px solid #e5e7eb", padding: "16px 24px" }}>
+        <h1 style={{ fontSize: "18px", fontWeight: 600, margin: 0 }}>Registry Preview</h1>
+      </header>
+      <div style={{ display: "flex" }}>
+        <nav style={{ width: "220px", borderRight: "1px solid #e5e7eb", padding: "16px" }}>
+          {names.length === 0 && (
+            <p style={{ fontSize: "14px", color: "#6b7280" }}>
+              No components yet. Run:<br />
+              <code>shadregistry add my-component</code>
+            </p>
+          )}
+          {names.map((name) => (
+            <button
+              key={name}
+              onClick={() => setActive(name)}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                padding: "6px 12px",
+                borderRadius: "6px",
+                border: "none",
+                cursor: "pointer",
+                fontSize: "14px",
+                marginBottom: "4px",
+                background: active === name ? "#f3f4f6" : "transparent",
+                fontWeight: active === name ? 600 : 400,
+              }}
+            >
+              {name}
+            </button>
+          ))}
+        </nav>
+        <main style={{ flex: 1, padding: "32px" }}>
+          {ActiveComponent ? (
+            <Suspense fallback={<div>Loading...</div>}>
+              <ActiveComponent />
+            </Suspense>
+          ) : (
+            <p style={{ color: "#6b7280" }}>Select a component</p>
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}
+`;
+}
+
+function generatePreviewRegistry(): string {
+	return `import { lazy, type ComponentType } from "react";
+
+export const components: Record<string, React.LazyExoticComponent<ComponentType>> = {
+  // Components are added here by \`shadregistry add\`
+};
+`;
 }

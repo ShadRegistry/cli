@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { readFileSync, existsSync, watch, readdirSync } from "node:fs";
 import { resolve, join } from "node:path";
-import { execSync } from "node:child_process";
+import { execSync, spawn, type ChildProcess } from "node:child_process";
 import { Command } from "commander";
 import { log } from "../lib/logger.js";
 import { readConfig, readManifest } from "../lib/config.js";
@@ -11,6 +11,8 @@ export const devCommand = new Command("dev")
   .description("Build and serve registry locally for testing")
   .option("--port <port>", "Port to serve on", "4200")
   .option("--no-watch", "Disable file watching")
+  .option("--preview", "Launch Vite preview app alongside the registry server", false)
+  .option("--preview-port <port>", "Port for Vite preview server", "4201")
   .option("--output <dir>", "Build output directory", DEFAULT_BUILD_OUTPUT)
   .action(async (opts) => {
     const cwd = process.cwd();
@@ -89,9 +91,18 @@ export const devCommand = new Command("dev")
       }
     });
 
+    // Launch Vite preview if requested
+    let viteProcess: ChildProcess | null = null;
+    if (opts.preview) {
+      viteProcess = startVitePreview(cwd, parseInt(opts.previewPort, 10));
+    }
+
     server.listen(port, () => {
       log.newline();
       log.success(`Serving registry at http://localhost:${port}`);
+      if (opts.preview) {
+        log.success(`Preview app at http://localhost:${opts.previewPort}`);
+      }
       log.newline();
 
       // List available items
@@ -154,6 +165,7 @@ export const devCommand = new Command("dev")
 
     // Keep process alive
     process.on("SIGINT", () => {
+      if (viteProcess) viteProcess.kill();
       server.close();
       process.exit(0);
     });
@@ -181,4 +193,47 @@ function listBuildItems(outputDir: string): string[] {
     .filter((f) => f.endsWith(".json") && f !== "registry.json")
     .map((f) => f.replace(/\.json$/, ""))
     .sort();
+}
+
+function startVitePreview(cwd: string, port: number): ChildProcess {
+  const viteConfigPath = resolve(cwd, "vite.config.ts");
+  if (!existsSync(viteConfigPath)) {
+    log.warn(
+      "No vite.config.ts found. Run `shadregistry init` to set up the preview app.",
+    );
+    return spawn("true");
+  }
+
+  const previewDir = resolve(cwd, "src/preview");
+  if (!existsSync(previewDir)) {
+    log.warn(
+      "No src/preview/ directory found. Run `shadregistry init` to set up the preview app.",
+    );
+    return spawn("true");
+  }
+
+  log.info("Starting preview server...");
+  const child = spawn("npx", ["vite", "--port", String(port)], {
+    cwd,
+    stdio: "pipe",
+    env: { ...process.env },
+  });
+
+  child.stdout?.on("data", (data: Buffer) => {
+    const text = data.toString().trim();
+    if (text) log.info(text);
+  });
+
+  child.stderr?.on("data", (data: Buffer) => {
+    const text = data.toString().trim();
+    if (text && !text.includes("ExperimentalWarning")) {
+      log.warn(text);
+    }
+  });
+
+  child.on("error", () => {
+    log.error("Failed to start Vite. Is it installed? Run `npm install`.");
+  });
+
+  return child;
 }

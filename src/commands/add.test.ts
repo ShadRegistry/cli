@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
 	mkdtempSync,
+	mkdirSync,
 	existsSync,
 	readFileSync,
 	rmSync,
+	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -371,6 +373,59 @@ describe("add command", () => {
 			expect(manifest.items[0].dependencies).toBeUndefined();
 			expect(manifest.items[0].devDependencies).toBeUndefined();
 			expect(manifest.items[0].registryDependencies).toBeUndefined();
+		});
+	});
+
+	describe("preview registry integration", () => {
+		it("updates preview registry when adding a component", async () => {
+			mkdirSync(join(tmpDir, "src/preview"), { recursive: true });
+			writeFileSync(
+				join(tmpDir, "src/preview/registry.ts"),
+				[
+					'import { lazy, type ComponentType } from "react";',
+					"",
+					"export const components: Record<string, React.LazyExoticComponent<ComponentType>> = {",
+					"  // Components are added here by `shadregistry add`",
+					"};",
+					"",
+				].join("\n"),
+			);
+
+			await addCommand.parseAsync(["node", "shadregistry", "cool-button"]);
+
+			const content = readFileSync(
+				join(tmpDir, "src/preview/registry.ts"),
+				"utf-8",
+			);
+			expect(content).toContain('"cool-button"');
+			expect(content).toContain("CoolButton");
+		});
+
+		it("does not update preview registry for hook type", async () => {
+			mkdirSync(join(tmpDir, "src/preview"), { recursive: true });
+			writeFileSync(
+				join(tmpDir, "src/preview/registry.ts"),
+				'export const components = {};\n',
+			);
+
+			await addCommand.parseAsync([
+				"node",
+				"shadregistry",
+				"use-toggle",
+				"--type",
+				"registry:hook",
+			]);
+
+			const content = readFileSync(
+				join(tmpDir, "src/preview/registry.ts"),
+				"utf-8",
+			);
+			expect(content).not.toContain("use-toggle");
+		});
+
+		it("skips preview update when registry.ts does not exist", async () => {
+			await addCommand.parseAsync(["node", "shadregistry", "my-comp"]);
+			expect(writeManifest).toHaveBeenCalled();
 		});
 	});
 });

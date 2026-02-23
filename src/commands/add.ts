@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { log } from "../lib/logger.js";
 import { readConfig, readManifest, writeManifest } from "../lib/config.js";
@@ -187,6 +187,9 @@ export const addCommand = new Command("add")
 
     writeManifest(manifest, cwd);
 
+    // Auto-register in preview app
+    updatePreviewRegistry(cwd, name, type, sourceDir);
+
     log.newline();
     if (files.length > 0) {
       log.success(`Created ${name} in ${sourceDir}/${name}/`);
@@ -196,6 +199,7 @@ export const addCommand = new Command("add")
     log.info("Added to registry.json");
     log.newline();
     log.info("Edit your files, then run:");
+    log.info("  shadregistry dev --preview       # Preview in browser");
     log.info("  shadcn build                     # Build the registry");
     log.info("  shadregistry publish              # Publish to the registry");
   });
@@ -262,4 +266,39 @@ function generatePageTemplate(name: string, title: string): string {
   );
 }
 `;
+}
+
+function updatePreviewRegistry(
+  cwd: string,
+  name: string,
+  type: string,
+  sourceDir: string,
+): void {
+  // Only for component-like types
+  const componentTypes = [
+    "registry:component",
+    "registry:ui",
+    "registry:item",
+    "registry:block",
+  ];
+  if (!componentTypes.includes(type)) return;
+
+  const registryPath = resolve(cwd, "src/preview/registry.ts");
+  if (!existsSync(registryPath)) return;
+
+  const content = readFileSync(registryPath, "utf-8");
+
+  // Check if already registered
+  if (content.includes(`"${name}"`)) return;
+
+  const componentName = toPascalCase(name);
+  const importPath = `@/${sourceDir.replace(/^src\//, "")}/${name}/components/${name}`;
+  const entry = `  "${name}": lazy(() => import("${importPath}").then(m => ({ default: m.${componentName} }))),`;
+
+  const updated = content.replace(
+    /^(\};)\s*$/m,
+    `${entry}\n$1`,
+  );
+
+  writeFileSync(registryPath, updated);
 }

@@ -30,11 +30,11 @@ shadregistry init
 # Add a component
 shadregistry add my-button
 
+# Preview components in the browser (includes HMR)
+shadregistry dev --preview
+
 # Build the registry (uses shadcn's native build)
 shadcn build
-
-# Test locally
-shadregistry dev
 
 # Publish to ShadRegistry
 shadregistry publish
@@ -65,6 +65,9 @@ Initialize a shadcn-compatible registry project. Creates:
 - `tsconfig.json` — with `baseUrl` and `@/*` path mapping
 - `package.json` — with `shadcn` as a devDependency and `"build": "shadcn build"` script
 - `src/registry/new-york/items/` — directory structure for component source files
+- `src/lib/utils.ts` — `cn` helper function (with `clsx` and `tailwind-merge`)
+- `src/preview/` — Vite + React preview app for rendering components during development
+- `vite.config.ts` — Vite configuration with `@/` alias and Tailwind CSS v4
 
 ```bash
 shadregistry init
@@ -82,7 +85,7 @@ shadregistry add helpers --type registry:lib        # → src/registry/new-york/
 shadregistry add my-block --type registry:block     # → src/registry/new-york/items/my-block/components/my-block.tsx
 ```
 
-Templates include `@/` alias imports (e.g., `import { cn } from "@/lib/utils"`) for portability.
+Templates include `@/` alias imports (e.g., `import { cn } from "@/lib/utils"`) for portability. Components are automatically registered in the preview app.
 
 Supported types: `registry:component`, `registry:hook`, `registry:lib`, `registry:block`, `registry:page`, `registry:file`, `registry:style`, `registry:theme`
 
@@ -91,13 +94,17 @@ Supported types: `registry:component`, `registry:hook`, `registry:lib`, `registr
 Build and serve your registry locally for testing. Runs `shadcn build`, starts a local HTTP server with CORS headers, and watches for file changes.
 
 ```bash
-shadregistry dev                      # Build, serve on port 4200, watch for changes
-shadregistry dev --port 3000          # Custom port
+shadregistry dev                      # Build, serve JSON on port 4200, watch for changes
+shadregistry dev --preview            # Also launch Vite preview app on port 4201
+shadregistry dev --port 3000          # Custom JSON server port
+shadregistry dev --preview-port 3001  # Custom preview app port
 shadregistry dev --no-watch           # Disable file watching
 shadregistry dev --output dist/r      # Custom build output directory
 ```
 
-Once running, install components in a consumer project with:
+With `--preview`, a Vite + React app opens at `http://localhost:4201` showing a gallery of all your components with hot module replacement.
+
+Install components in a consumer project with:
 
 ```bash
 npx shadcn@latest add http://localhost:4200/r/my-button.json
@@ -177,8 +184,17 @@ my-registry/
   shadregistry.config.json                   # Where to publish (registry name, API URL)
   registry.json                              # What to publish (standard shadcn manifest)
   tsconfig.json                              # TypeScript config with @/* path aliases
-  package.json                               # Includes shadcn devDep + build script
+  package.json                               # Includes shadcn + Vite devDeps, build script
+  vite.config.ts                             # Vite config for preview app
   src/
+    lib/
+      utils.ts                               # cn() helper (clsx + tailwind-merge)
+    preview/                                 # Vite + React preview app (dev only)
+      index.html
+      main.tsx
+      App.tsx
+      registry.ts                            # Component map (auto-updated by `add`)
+      globals.css
     registry/
       new-york/
         items/

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
 	mkdtempSync,
+	mkdirSync,
 	existsSync,
 	readFileSync,
 	rmSync,
@@ -378,5 +379,58 @@ describe("init command", () => {
 		expect(log.warn).toHaveBeenCalledWith(
 			expect.stringContaining("Could not auto-install"),
 		);
+	});
+
+	it("creates preview app files and vite config", async () => {
+		vi.mocked(resolveToken).mockReturnValue(null);
+		await initCommand.parseAsync([
+			"node",
+			"shadregistry",
+			"--name",
+			"test-reg",
+			"--yes",
+		]);
+		expect(existsSync(join(tmpDir, "vite.config.ts"))).toBe(true);
+		expect(existsSync(join(tmpDir, "src/preview/index.html"))).toBe(true);
+		expect(existsSync(join(tmpDir, "src/preview/main.tsx"))).toBe(true);
+		expect(existsSync(join(tmpDir, "src/preview/App.tsx"))).toBe(true);
+		expect(existsSync(join(tmpDir, "src/preview/registry.ts"))).toBe(true);
+		expect(existsSync(join(tmpDir, "src/preview/globals.css"))).toBe(true);
+
+		const viteConfig = readFileSync(join(tmpDir, "vite.config.ts"), "utf-8");
+		expect(viteConfig).toContain("src/preview");
+		expect(viteConfig).toContain('"@"');
+	});
+
+	it("includes vite deps in generated package.json", async () => {
+		vi.mocked(resolveToken).mockReturnValue(null);
+		await initCommand.parseAsync([
+			"node",
+			"shadregistry",
+			"--name",
+			"test-reg",
+			"--yes",
+		]);
+		const pkg = JSON.parse(readFileSync(join(tmpDir, "package.json"), "utf-8"));
+		expect(pkg.devDependencies).toHaveProperty("vite");
+		expect(pkg.devDependencies).toHaveProperty("@vitejs/plugin-react");
+		expect(pkg.devDependencies).toHaveProperty("react-dom");
+		expect(pkg.devDependencies).toHaveProperty("tailwindcss");
+		expect(pkg.scripts.dev).toBe("shadregistry dev --preview");
+	});
+
+	it("does not overwrite existing preview files", async () => {
+		vi.mocked(resolveToken).mockReturnValue(null);
+		mkdirSync(join(tmpDir, "src/preview"), { recursive: true });
+		writeFileSync(join(tmpDir, "src/preview/App.tsx"), "custom content");
+		await initCommand.parseAsync([
+			"node",
+			"shadregistry",
+			"--name",
+			"test-reg",
+			"--yes",
+		]);
+		const content = readFileSync(join(tmpDir, "src/preview/App.tsx"), "utf-8");
+		expect(content).toBe("custom content");
 	});
 });
