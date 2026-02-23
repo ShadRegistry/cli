@@ -178,6 +178,27 @@ export const initCommand = new Command("init")
 			mkdirSync(srcDir, { recursive: true });
 		}
 
+		// Create src/lib/utils.ts (cn helper used by component templates)
+		const utilsDir = resolve(cwd, "src/lib");
+		if (!existsSync(utilsDir)) {
+			mkdirSync(utilsDir, { recursive: true });
+		}
+		const utilsPath = join(utilsDir, "utils.ts");
+		if (!existsSync(utilsPath)) {
+			writeFileSync(
+				utilsPath,
+				[
+					'import { type ClassValue, clsx } from "clsx";',
+					'import { twMerge } from "tailwind-merge";',
+					"",
+					"export function cn(...inputs: ClassValue[]) {",
+					"  return twMerge(clsx(inputs));",
+					"}",
+					"",
+				].join("\n"),
+			);
+		}
+
 		// Write components.json if it doesn't exist (required by shadcn build)
 		const componentsJsonPath = join(cwd, "components.json");
 		if (!existsSync(componentsJsonPath)) {
@@ -217,6 +238,10 @@ export const initCommand = new Command("init")
 				private: true,
 				scripts: {
 					build: "shadcn build",
+				},
+				dependencies: {
+					clsx: "^2.1.1",
+					"tailwind-merge": "^3.0.0",
 				},
 				devDependencies: {
 					react: "^19.0.0",

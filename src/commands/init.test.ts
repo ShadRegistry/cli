@@ -280,8 +280,27 @@ describe("init command", () => {
 		const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
 		expect(pkg.devDependencies).toHaveProperty("react");
 		expect(pkg.devDependencies).toHaveProperty("shadcn");
+		expect(pkg.dependencies).toHaveProperty("clsx");
+		expect(pkg.dependencies).toHaveProperty("tailwind-merge");
 		expect(pkg.scripts.build).toBe("shadcn build");
 		expect(execSync).toHaveBeenCalled();
+	});
+
+	it("creates src/lib/utils.ts with cn helper", async () => {
+		vi.mocked(resolveToken).mockReturnValue(null);
+		await initCommand.parseAsync([
+			"node",
+			"shadregistry",
+			"--name",
+			"test-reg",
+			"--yes",
+		]);
+		const utilsPath = join(tmpDir, "src/lib/utils.ts");
+		expect(existsSync(utilsPath)).toBe(true);
+		const content = readFileSync(utilsPath, "utf-8");
+		expect(content).toContain("export function cn(");
+		expect(content).toContain('from "clsx"');
+		expect(content).toContain('from "tailwind-merge"');
 	});
 
 	it("does not overwrite existing package.json", async () => {
