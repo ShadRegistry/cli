@@ -96,6 +96,7 @@ export interface ItemPayload {
     weight?: string[];
     subsets?: string[];
   };
+  previewBundle?: string;
 }
 
 export interface DiffResult {

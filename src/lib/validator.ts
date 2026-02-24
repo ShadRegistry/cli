@@ -66,6 +66,7 @@ export const registryItemSchema = z.object({
   baseColor: z.string().optional(),
   itemTheme: z.string().optional(),
   font: fontSchema.optional(),
+  previewBundle: z.string().optional(),
 });
 
 export type ValidatedItem = z.infer<typeof registryItemSchema>;

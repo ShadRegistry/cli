@@ -7,6 +7,7 @@ import { readConfig, writeConfig } from "../lib/config.js";
 import { DEFAULT_SOURCE_DIR } from "../lib/constants.js";
 import { computeDiff, formatDiffSummary } from "../lib/diff-utils.js";
 import { log } from "../lib/logger.js";
+import { bundlePreviewCode } from "../lib/preview-bundler.js";
 import {
 	chunkItems,
 	readBuildOutput,
@@ -102,6 +103,25 @@ export const publishCommand = new Command("publish")
 		if (payloads.length === 0) {
 			log.warn("No items found in build output. Run `shadcn build` first.");
 			process.exit(0);
+		}
+
+		// Bundle preview code for each item
+		const bundleSpinner = ora("Bundling preview code...").start();
+		let bundled = 0;
+		for (const payload of payloads) {
+			try {
+				const bundle = await bundlePreviewCode(payload, cwd, config.sourceDir);
+				if (bundle) {
+					payload.previewBundle = bundle;
+					bundled++;
+				}
+			} catch {
+				// Non-fatal — continue without bundle
+			}
+		}
+		bundleSpinner.stop();
+		if (bundled > 0) {
+			log.dim(`Bundled preview code for ${bundled} item${bundled !== 1 ? "s" : ""}`);
 		}
 
 		// Validate each payload
