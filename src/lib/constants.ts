@@ -9,3 +9,4 @@ export const TOKEN_PREFIX_PAT = "pat_";
 export const TOKEN_PREFIX_SKEY = "skey_";
 export const MAX_BATCH_SIZE = 512 * 1024; // 512KB per publish batch
 export const DEFAULT_TEMPLATE = "shadregistry/registry-template";
+export const NEXTJS_TEMPLATE = "shadcn-ui/registry-template";

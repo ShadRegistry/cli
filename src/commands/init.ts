@@ -22,7 +22,7 @@ import {
 	writeConfig,
 	writeManifest,
 } from "../lib/config.js";
-import { DEFAULT_SOURCE_DIR, DEFAULT_TEMPLATE } from "../lib/constants.js";
+import { DEFAULT_SOURCE_DIR, DEFAULT_TEMPLATE, NEXTJS_TEMPLATE } from "../lib/constants.js";
 import { log } from "../lib/logger.js";
 
 export const initCommand = new Command("init")
@@ -164,24 +164,52 @@ export const initCommand = new Command("init")
 			displayName = toTitleCase(registryName);
 		}
 
-		// Write config
+		// Determine template flavor
+		let templateRepo = opts.template;
+		let flavor: "vite" | "nextjs" = "vite";
+		const templateExplicitlySet =
+			initCommand.getOptionValueSource("template") !== "default";
+
+		if (!templateExplicitlySet) {
+			if (opts.yes) {
+				flavor = "vite";
+				templateRepo = DEFAULT_TEMPLATE;
+			} else {
+				log.info("Which template would you like to use?");
+				log.info("  1. Next.js");
+				log.info("  2. Vite");
+				log.newline();
+				const choice = await prompt("Template (1/2): ");
+				if (choice === "1" || choice.toLowerCase() === "nextjs" || choice.toLowerCase() === "next") {
+					flavor = "nextjs";
+					templateRepo = NEXTJS_TEMPLATE;
+				} else {
+					flavor = "vite";
+					templateRepo = DEFAULT_TEMPLATE;
+				}
+			}
+		}
+
+		// Write config (before download so template won't overwrite it)
 		writeConfig(
 			{
 				$schema: "https://shadregistry.com/schema/config.json",
 				registry: registryName,
 				sourceDir,
 				url: hostname,
+				templateFlavor: flavor,
 			},
 			cwd,
 		);
 
-		// Download template or fall back to built-in generators
+		// Download template
 		const hadPackageJson = existsSync(join(cwd, "package.json"));
-		const downloaded = await downloadTemplate(cwd, opts.template);
+		const downloaded = await downloadTemplate(cwd, templateRepo);
 		if (downloaded) {
 			patchTemplateFiles(cwd, { registryName, sourceDir, hostname });
 		} else {
-			generateFallbackFiles(cwd, registryName, sourceDir);
+			log.error("Failed to download template. Please check your internet connection and try again.");
+			process.exit(1);
 		}
 
 		// Write registry.json if it doesn't exist (always use writeManifest for consistency)
@@ -206,11 +234,19 @@ export const initCommand = new Command("init")
 		// Warn about deps if package.json already existed
 		const needsInstall = !hadPackageJson && existsSync(join(cwd, "package.json"));
 		if (hadPackageJson) {
-			log.warn(
-				"package.json already exists — make sure the following are installed:\n" +
-					"  npm install clsx tailwind-merge\n" +
-					"  npm install -D shadcn react-dom vite @vitejs/plugin-react tailwindcss @tailwindcss/vite",
-			);
+			if (flavor === "nextjs") {
+				log.warn(
+					"package.json already exists — make sure the following are installed:\n" +
+						"  npm install clsx tailwind-merge\n" +
+						"  npm install -D shadcn",
+				);
+			} else {
+				log.warn(
+					"package.json already exists — make sure the following are installed:\n" +
+						"  npm install clsx tailwind-merge\n" +
+						"  npm install -D shadcn react-dom vite @vitejs/plugin-react tailwindcss @tailwindcss/vite",
+				);
+			}
 		}
 
 		// Auto-install dependencies if we created package.json
@@ -231,7 +267,11 @@ export const initCommand = new Command("init")
 		log.newline();
 		log.info("Next steps:");
 		log.info(`  shadr add my-component    # Scaffold a new component`);
-		log.info(`  shadr dev --preview       # Preview components in browser`);
+		if (flavor === "nextjs") {
+			log.info(`  npm run dev               # Start Next.js dev server`);
+		} else {
+			log.info(`  shadr dev --preview       # Preview components in browser`);
+		}
 		log.info(`  shadcn build              # Build the registry`);
 		log.info(`  shadr publish             # Publish to the registry`);
 		log.newline();
@@ -343,8 +383,8 @@ async function downloadTemplate(
 		log.success("Downloaded template from GitHub.");
 		return true;
 	} catch (e: unknown) {
-		log.warn(
-			`Failed to download template: ${e instanceof Error ? e.message : "Unknown error"}. Using built-in fallback.`,
+		log.error(
+			`Failed to download template: ${e instanceof Error ? e.message : "Unknown error"}.`,
 		);
 		return false;
 	} finally {
@@ -369,10 +409,11 @@ function copyDirRecursive(src: string, dest: string): void {
 	}
 }
 
-function patchTemplateFiles(
+export function patchTemplateFiles(
 	cwd: string,
 	vars: { registryName: string; sourceDir: string; hostname: string },
 ): void {
+	// Placeholder-based patching (for Vite template compatibility)
 	const replacements: Record<string, string> = {
 		"{{REGISTRY_NAME}}": vars.registryName,
 		"{{SOURCE_DIR}}": vars.sourceDir,
@@ -392,261 +433,21 @@ function patchTemplateFiles(
 		}
 		writeFileSync(p, content);
 	}
+
+	// JSON field patching (works for any template, including Next.js)
+	patchJsonField(join(cwd, "package.json"), "name", `${vars.registryName}-registry`);
+	patchJsonField(join(cwd, "registry.json"), "name", vars.registryName);
 }
 
-function generateFallbackFiles(
-	cwd: string,
-	registryName: string,
-	sourceDir: string,
-): void {
-	mkdirSync(join(cwd, "src/preview"), { recursive: true });
-	mkdirSync(join(cwd, "src/lib"), { recursive: true });
-
-	const w = (p: string, content: string) => {
-		if (!existsSync(p)) {
-			mkdirSync(join(p, ".."), { recursive: true });
-			writeFileSync(p, content);
-		}
-	};
-
-	w(join(cwd, ".gitignore"), generateGitignore());
-	w(join(cwd, "components.json"), generateComponentsJson());
-	w(join(cwd, "tsconfig.json"), generateTsconfig());
-	w(join(cwd, "vite.config.ts"), generateViteConfig());
-	w(join(cwd, "package.json"), generatePackageJson(registryName));
-	w(join(cwd, "src/lib/utils.ts"), generateUtils());
-	w(join(cwd, "src/preview/index.html"), generatePreviewHtml());
-	w(join(cwd, "src/preview/globals.css"), generatePreviewCss());
-	w(join(cwd, "src/preview/main.tsx"), generatePreviewMain());
-	w(join(cwd, "src/preview/App.tsx"), generatePreviewApp());
-	w(join(cwd, "src/preview/registry.ts"), generatePreviewRegistry());
+function patchJsonField(filePath: string, field: string, value: string): void {
+	if (!existsSync(filePath)) return;
+	try {
+		const content = readFileSync(filePath, "utf-8");
+		const json = JSON.parse(content);
+		json[field] = value;
+		writeFileSync(filePath, JSON.stringify(json, null, 2) + "\n");
+	} catch {
+		// If the file isn't valid JSON, skip silently
+	}
 }
 
-// ── Built-in file generators (offline fallback) ─────────────────
-
-function generateViteConfig(): string {
-	return `import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
-import path from "path";
-
-export default defineConfig({
-  root: "src/preview",
-  plugins: [react(), tailwindcss()],
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
-  },
-  server: {
-    port: 4201,
-  },
-});
-`;
-}
-
-function generatePreviewHtml(): string {
-	return `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Registry Preview</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="./main.tsx"></script>
-  </body>
-</html>
-`;
-}
-
-function generatePreviewCss(): string {
-	return `@import "tailwindcss";
-`;
-}
-
-function generatePreviewMain(): string {
-	return `import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
-import "./globals.css";
-import { App } from "./App";
-
-const root = document.getElementById("root");
-if (!root) throw new Error("Root element not found");
-createRoot(root).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-);
-`;
-}
-
-function generatePreviewApp(): string {
-	return `import { Suspense, useState } from "react";
-import { components } from "./registry";
-
-export function App() {
-  const names = Object.keys(components);
-  const [active, setActive] = useState<string>(names[0] ?? "");
-
-  const ActiveComponent = active ? components[active] : null;
-
-  return (
-    <div style={{ minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
-      <header style={{ borderBottom: "1px solid #e5e7eb", padding: "16px 24px" }}>
-        <h1 style={{ fontSize: "18px", fontWeight: 600, margin: 0 }}>Registry Preview</h1>
-      </header>
-      <div style={{ display: "flex" }}>
-        <nav style={{ width: "220px", borderRight: "1px solid #e5e7eb", padding: "16px" }}>
-          {names.length === 0 && (
-            <p style={{ fontSize: "14px", color: "#6b7280" }}>
-              No components yet. Run:<br />
-              <code>shadregistry add my-component</code>
-            </p>
-          )}
-          {names.map((name) => (
-            <button
-              type="button"
-              key={name}
-              onClick={() => setActive(name)}
-              style={{
-                display: "block",
-                width: "100%",
-                textAlign: "left",
-                padding: "6px 12px",
-                borderRadius: "6px",
-                border: "none",
-                cursor: "pointer",
-                fontSize: "14px",
-                marginBottom: "4px",
-                background: active === name ? "#f3f4f6" : "transparent",
-                fontWeight: active === name ? 600 : 400,
-              }}
-            >
-              {name}
-            </button>
-          ))}
-        </nav>
-        <main style={{ flex: 1, padding: "32px" }}>
-          {ActiveComponent ? (
-            <Suspense fallback={<div>Loading...</div>}>
-              <ActiveComponent />
-            </Suspense>
-          ) : (
-            <p style={{ color: "#6b7280" }}>Select a component</p>
-          )}
-        </main>
-      </div>
-    </div>
-  );
-}
-`;
-}
-
-function generateGitignore(): string {
-	return `node_modules/
-dist/
-public/r/
-`;
-}
-
-function generatePreviewRegistry(): string {
-	return `import { lazy, type ComponentType } from "react";
-
-export const components: Record<string, React.LazyExoticComponent<ComponentType>> = {
-  // Components are added here by \`shadregistry add\`
-};
-`;
-}
-
-function generateComponentsJson(): string {
-	return `${JSON.stringify(
-		{
-			$schema: "https://ui.shadcn.com/schema.json",
-			style: "new-york",
-			rsc: false,
-			tsx: true,
-			tailwind: {
-				config: "",
-				css: "",
-				baseColor: "neutral",
-				cssVariables: true,
-				prefix: "",
-			},
-			aliases: {
-				components: "@/components",
-				utils: "@/lib/utils",
-				ui: "@/components/ui",
-				lib: "@/lib",
-				hooks: "@/hooks",
-			},
-			iconLibrary: "lucide",
-		},
-		null,
-		2,
-	)}\n`;
-}
-
-function generateTsconfig(): string {
-	return `${JSON.stringify(
-		{
-			compilerOptions: {
-				target: "ES2020",
-				module: "ESNext",
-				moduleResolution: "bundler",
-				jsx: "react-jsx",
-				strict: true,
-				esModuleInterop: true,
-				skipLibCheck: true,
-				noEmit: true,
-				baseUrl: ".",
-				paths: { "@/*": ["./src/*"] },
-			},
-			include: ["src/**/*.ts", "src/**/*.tsx"],
-		},
-		null,
-		2,
-	)}\n`;
-}
-
-function generatePackageJson(registryName: string): string {
-	return `${JSON.stringify(
-		{
-			name: `${registryName}-registry`,
-			private: true,
-			scripts: {
-				build: "shadcn build",
-				dev: "shadregistry dev --preview",
-			},
-			dependencies: {
-				clsx: "^2.1.1",
-				"tailwind-merge": "^3.0.0",
-			},
-			devDependencies: {
-				react: "^19.0.0",
-				"react-dom": "^19.0.0",
-				"@types/react": "^19.0.0",
-				"@types/react-dom": "^19.0.0",
-				typescript: "^5.0.0",
-				shadcn: "^3.0.0",
-				vite: "^6.0.0",
-				"@vitejs/plugin-react": "^4.0.0",
-				tailwindcss: "^4.0.0",
-				"@tailwindcss/vite": "^4.0.0",
-			},
-		},
-		null,
-		2,
-	)}\n`;
-}
-
-function generateUtils(): string {
-	return `import { type ClassValue, clsx } from "clsx";
-import { twMerge } from "tailwind-merge";
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-`;
-}

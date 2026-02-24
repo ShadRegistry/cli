@@ -1,252 +1,301 @@
-import { Command } from "commander";
 import { createInterface } from "node:readline";
+import { Command } from "commander";
 import ora from "ora";
-import { log } from "../lib/logger.js";
-import { resolveToken, resolveHostname } from "../lib/auth.js";
-import { readConfig } from "../lib/config.js";
 import { ApiClient } from "../lib/api-client.js";
-import {
-  readBuildOutput,
-  validatePayload,
-  chunkItems,
-} from "../lib/registry-builder.js";
+import { resolveHostname, resolveToken } from "../lib/auth.js";
+import { readConfig, writeConfig } from "../lib/config.js";
+import { DEFAULT_SOURCE_DIR } from "../lib/constants.js";
 import { computeDiff, formatDiffSummary } from "../lib/diff-utils.js";
+import { log } from "../lib/logger.js";
+import {
+	chunkItems,
+	readBuildOutput,
+	validatePayload,
+} from "../lib/registry-builder.js";
 import type { ItemPayload, PublishResult } from "../types/index.js";
 
 export const publishCommand = new Command("publish")
-  .description("Publish components to the remote registry")
-  .option("--dry-run", "Show what would change without publishing", false)
-  .option("--force", "Skip confirmation prompt", false)
-  .option("--filter <names>", "Only publish specific items (comma-separated)")
-  .option("--prune", "Delete remote items not present locally", false)
-  .option("--token <token>", "Override auth token")
-  .option("--output <dir>", "Build output directory", "public/r")
-  .action(async (opts) => {
-    const cwd = process.cwd();
+	.description("Publish components to the remote registry")
+	.option("--dry-run", "Show what would change without publishing", false)
+	.option("--force", "Skip confirmation prompt", false)
+	.option("--filter <names>", "Only publish specific items (comma-separated)")
+	.option("--prune", "Delete remote items not present locally", false)
+	.option("--token <token>", "Override auth token")
+	.option("--output <dir>", "Build output directory", "public/r")
+	.action(async (opts) => {
+		const cwd = process.cwd();
 
-    // Step 1: Resolve auth
-    const token = resolveToken(opts.token);
-    if (!token) {
-      log.error(
-        "Not authenticated. Run `shadr login` or set SHADREGISTRY_TOKEN.",
-      );
-      process.exit(2);
-    }
+		// Step 1: Resolve auth
+		const token = resolveToken(opts.token);
+		if (!token) {
+			log.error(
+				"Not authenticated. Run `shadr login` or set SHADREGISTRY_TOKEN.",
+			);
+			process.exit(2);
+		}
 
-    // Step 2: Read config
-    const config = readConfig(cwd);
-    if (!config) {
-      log.error(
-        "No shadregistry.config.json found. Run `shadr init` first.",
-      );
-      process.exit(1);
-    }
+		// Step 2: Read config (or create one if missing)
+		let config = readConfig(cwd);
+		if (!config) {
+			log.warn("No shadregistry.config.json found.");
+			const hostname = resolveHostname();
+			const client = new ApiClient(hostname, token);
 
-    // Step 3: Read build output
-    let payloads: ItemPayload[];
-    try {
-      payloads = readBuildOutput(cwd, opts.output);
-    } catch (e: any) {
-      log.error(e.message);
-      process.exit(1);
-    }
+			let registryName: string | undefined;
+			try {
+				const { registries } = await client.get<{
+					registries: Array<{
+						name: string;
+						displayName: string;
+						isPrivate: boolean;
+					}>;
+				}>("/api/cli/registries");
 
-    if (payloads.length === 0) {
-      log.warn(
-        "No items found in build output. Run `shadcn build` first.",
-      );
-      process.exit(0);
-    }
+				if (registries.length > 0) {
+					log.info("Your registries:");
+					registries.forEach((r, i) => {
+						log.info(
+							`  ${i + 1}. ${r.name} ${r.isPrivate ? "(private)" : "(public)"}`,
+						);
+					});
+					log.info(`  ${registries.length + 1}. Enter a new name`);
+					log.newline();
 
-    // Validate each payload
-    for (const payload of payloads) {
-      const err = validatePayload(payload);
-      if (err) {
-        log.error(err);
-        process.exit(1);
-      }
-    }
+					const choice = await prompt("Select a registry (number): ");
+					const idx = parseInt(choice, 10) - 1;
 
-    // Step 4: Apply filter
-    if (opts.filter) {
-      const filterNames = new Set(
-        (opts.filter as string).split(",").map((s: string) => s.trim()),
-      );
-      payloads = payloads.filter((p) => filterNames.has(p.name));
+					if (idx >= 0 && idx < registries.length) {
+						registryName = registries[idx].name;
+					}
+				}
+			} catch {
+				// If API fails, fall through to manual prompt
+			}
 
-      // Warn about unmatched filters
-      for (const name of filterNames) {
-        if (!payloads.some((p) => p.name === name)) {
-          log.warn(`Filter name '${name}' does not match any built item.`);
-        }
-      }
-    }
+			if (!registryName) {
+				registryName = await prompt("Registry name: ");
+			}
+			if (!registryName) {
+				log.error("Registry name is required.");
+				process.exit(1);
+			}
 
-    // Step 5: Fetch remote state
-    const hostname = resolveHostname();
-    const client = new ApiClient(hostname, token);
+			config = {
+				$schema: "https://shadregistry.com/schema/config.json",
+				registry: registryName,
+				sourceDir: DEFAULT_SOURCE_DIR,
+				url: hostname,
+			};
+			writeConfig(config, cwd);
+			log.success("Created shadregistry.config.json");
+		}
 
-    let remoteItems: ItemPayload[];
-    const spinner = ora("Fetching remote state...").start();
-    try {
-      const data = await client.get<{ items: ItemPayload[] }>(
-        `/api/cli/items?registry=${encodeURIComponent(config.registry)}`,
-      );
-      remoteItems = data.items;
-      spinner.stop();
-    } catch (e: any) {
-      spinner.fail(`Failed to fetch remote items: ${e.message}`);
-      process.exit(3);
-    }
+		// Step 3: Read build output
+		let payloads: ItemPayload[];
+		try {
+			payloads = readBuildOutput(cwd, opts.output);
+		} catch (e: any) {
+			log.error(e.message);
+			process.exit(1);
+		}
 
-    // Step 6: Compute diff
-    const diff = computeDiff(payloads, remoteItems);
+		if (payloads.length === 0) {
+			log.warn("No items found in build output. Run `shadcn build` first.");
+			process.exit(0);
+		}
 
-    // Step 7: Display summary
-    log.bold(`Publishing to @${config.registry}`);
-    log.newline();
-    log.info(formatDiffSummary(diff, config.registry));
+		// Validate each payload
+		for (const payload of payloads) {
+			const err = validatePayload(payload);
+			if (err) {
+				log.error(err);
+				process.exit(1);
+			}
+		}
 
-    const totalToPublish = diff.newItems.length + diff.updatedItems.length;
+		// Step 4: Apply filter
+		if (opts.filter) {
+			const filterNames = new Set(
+				(opts.filter as string).split(",").map((s: string) => s.trim()),
+			);
+			payloads = payloads.filter((p) => filterNames.has(p.name));
 
-    // Step 8: Dry run exit
-    if (opts.dryRun) {
-      process.exit(0);
-    }
+			// Warn about unmatched filters
+			for (const name of filterNames) {
+				if (!payloads.some((p) => p.name === name)) {
+					log.warn(`Filter name '${name}' does not match any built item.`);
+				}
+			}
+		}
 
-    if (totalToPublish === 0 && (!opts.prune || diff.orphanedNames.length === 0)) {
-      log.info("Nothing to publish.");
-      process.exit(0);
-    }
+		// Step 5: Fetch remote state
+		const hostname = resolveHostname();
+		const client = new ApiClient(hostname, token);
 
-    // Step 9: Confirm
-    if (!opts.force && totalToPublish > 0) {
-      const answer = await prompt(
-        `\nPublish ${totalToPublish} item${totalToPublish !== 1 ? "s" : ""}? (y/n) `,
-      );
-      if (answer.toLowerCase() !== "y") {
-        log.info("Aborted.");
-        process.exit(0);
-      }
-    }
+		let remoteItems: ItemPayload[];
+		const spinner = ora("Fetching remote state...").start();
+		try {
+			const data = await client.get<{ items: ItemPayload[] }>(
+				`/api/cli/items?registry=${encodeURIComponent(config.registry)}`,
+			);
+			remoteItems = data.items;
+			spinner.stop();
+		} catch (e: any) {
+			spinner.fail(`Failed to fetch remote items: ${e.message}`);
+			process.exit(3);
+		}
 
-    // Step 10: Upload
-    if (totalToPublish > 0) {
-      const itemsToPublish = [...diff.newItems, ...diff.updatedItems];
-      const chunks = chunkItems(itemsToPublish);
+		// Step 6: Compute diff
+		const diff = computeDiff(payloads, remoteItems);
 
-      let totalCreated = 0;
-      let totalUpdated = 0;
-      const allErrors: Array<{ name: string; error: string }> = [];
+		// Step 7: Display summary
+		log.bold(`Publishing to @${config.registry}`);
+		log.newline();
+		log.info(formatDiffSummary(diff, config.registry));
 
-      const uploadSpinner = ora("Publishing...").start();
+		const totalToPublish = diff.newItems.length + diff.updatedItems.length;
 
-      for (let i = 0; i < chunks.length; i++) {
-        try {
-          const result = await client.post<PublishResult>(
-            "/api/cli/items/publish",
-            {
-              registry: config.registry,
-              items: chunks[i],
-            },
-          );
+		// Step 8: Dry run exit
+		if (opts.dryRun) {
+			process.exit(0);
+		}
 
-          totalCreated += result.created;
-          totalUpdated += result.updated;
-          if (result.errors?.length) {
-            allErrors.push(...result.errors);
-          }
-        } catch (e: any) {
-          uploadSpinner.fail(`Upload failed: ${e.message}`);
-          process.exit(3);
-        }
-      }
+		if (
+			totalToPublish === 0 &&
+			(!opts.prune || diff.orphanedNames.length === 0)
+		) {
+			log.info("Nothing to publish.");
+			process.exit(0);
+		}
 
-      uploadSpinner.stop();
+		// Step 9: Confirm
+		if (!opts.force && totalToPublish > 0) {
+			const answer = await prompt(
+				`\nPublish ${totalToPublish} item${totalToPublish !== 1 ? "s" : ""}? (y/n) `,
+			);
+			if (answer.toLowerCase() !== "y") {
+				log.info("Aborted.");
+				process.exit(0);
+			}
+		}
 
-      if (allErrors.length > 0) {
-        log.warn("Some items had errors:");
-        for (const err of allErrors) {
-          log.error(`  ${err.name}: ${err.error}`);
-        }
-      }
+		// Step 10: Upload
+		if (totalToPublish > 0) {
+			const itemsToPublish = [...diff.newItems, ...diff.updatedItems];
+			const chunks = chunkItems(itemsToPublish);
 
-      // Step 11: Prune
-      if (opts.prune && diff.orphanedNames.length > 0) {
-        if (!opts.force) {
-          log.newline();
-          log.info(
-            `Deleting ${diff.orphanedNames.length} orphaned item${diff.orphanedNames.length !== 1 ? "s" : ""}: ${diff.orphanedNames.join(", ")}`,
-          );
-          const pruneAnswer = await prompt("Proceed? (y/n) ");
-          if (pruneAnswer.toLowerCase() !== "y") {
-            log.info("Skipped pruning.");
-          } else {
-            await pruneItems(client, config.registry, diff.orphanedNames);
-          }
-        } else {
-          await pruneItems(client, config.registry, diff.orphanedNames);
-        }
-      }
+			let totalCreated = 0;
+			let totalUpdated = 0;
+			const allErrors: Array<{ name: string; error: string }> = [];
 
-      // Step 12: Success
-      log.newline();
-      log.success(
-        `Published ${totalCreated + totalUpdated} item${totalCreated + totalUpdated !== 1 ? "s" : ""} to @${config.registry}`,
-      );
-      log.newline();
+			const uploadSpinner = ora("Publishing...").start();
 
-      for (const item of diff.newItems) {
-        log.info(`  + ${item.name}  (created)`);
-      }
-      for (const item of diff.updatedItems) {
-        log.info(`  ~ ${item.name}  (updated)`);
-      }
+			for (let i = 0; i < chunks.length; i++) {
+				try {
+					const result = await client.post<PublishResult>(
+						"/api/cli/items/publish",
+						{
+							registry: config.registry,
+							items: chunks[i],
+						},
+					);
 
-      log.newline();
-      log.dim(`Registry: ${hostname}/r/@${config.registry}/registry.json`);
+					totalCreated += result.created;
+					totalUpdated += result.updated;
+					if (result.errors?.length) {
+						allErrors.push(...result.errors);
+					}
+				} catch (e: any) {
+					uploadSpinner.fail(`Upload failed: ${e.message}`);
+					process.exit(3);
+				}
+			}
 
-      if (allErrors.length > 0) {
-        process.exit(3);
-      }
-    } else if (opts.prune && diff.orphanedNames.length > 0) {
-      // Only pruning, no publishes
-      if (!opts.force) {
-        log.newline();
-        const pruneAnswer = await prompt(
-          `Delete ${diff.orphanedNames.length} orphaned item${diff.orphanedNames.length !== 1 ? "s" : ""}? (y/n) `,
-        );
-        if (pruneAnswer.toLowerCase() !== "y") {
-          log.info("Aborted.");
-          process.exit(0);
-        }
-      }
-      await pruneItems(client, config.registry, diff.orphanedNames);
-      log.success(`Pruned ${diff.orphanedNames.length} orphaned items.`);
-    }
-  });
+			uploadSpinner.stop();
+
+			if (allErrors.length > 0) {
+				log.warn("Some items had errors:");
+				for (const err of allErrors) {
+					log.error(`  ${err.name}: ${err.error}`);
+				}
+			}
+
+			// Step 11: Prune
+			if (opts.prune && diff.orphanedNames.length > 0) {
+				if (!opts.force) {
+					log.newline();
+					log.info(
+						`Deleting ${diff.orphanedNames.length} orphaned item${diff.orphanedNames.length !== 1 ? "s" : ""}: ${diff.orphanedNames.join(", ")}`,
+					);
+					const pruneAnswer = await prompt("Proceed? (y/n) ");
+					if (pruneAnswer.toLowerCase() !== "y") {
+						log.info("Skipped pruning.");
+					} else {
+						await pruneItems(client, config.registry, diff.orphanedNames);
+					}
+				} else {
+					await pruneItems(client, config.registry, diff.orphanedNames);
+				}
+			}
+
+			// Step 12: Success
+			log.newline();
+			log.success(
+				`Published ${totalCreated + totalUpdated} item${totalCreated + totalUpdated !== 1 ? "s" : ""} to @${config.registry}`,
+			);
+			log.newline();
+
+			for (const item of diff.newItems) {
+				log.info(`  + ${item.name}  (created)`);
+			}
+			for (const item of diff.updatedItems) {
+				log.info(`  ~ ${item.name}  (updated)`);
+			}
+
+			log.newline();
+			log.dim(`Registry: ${hostname}/r/@${config.registry}/registry.json`);
+
+			if (allErrors.length > 0) {
+				process.exit(3);
+			}
+		} else if (opts.prune && diff.orphanedNames.length > 0) {
+			// Only pruning, no publishes
+			if (!opts.force) {
+				log.newline();
+				const pruneAnswer = await prompt(
+					`Delete ${diff.orphanedNames.length} orphaned item${diff.orphanedNames.length !== 1 ? "s" : ""}? (y/n) `,
+				);
+				if (pruneAnswer.toLowerCase() !== "y") {
+					log.info("Aborted.");
+					process.exit(0);
+				}
+			}
+			await pruneItems(client, config.registry, diff.orphanedNames);
+			log.success(`Pruned ${diff.orphanedNames.length} orphaned items.`);
+		}
+	});
 
 async function pruneItems(
-  client: ApiClient,
-  registry: string,
-  names: string[],
+	client: ApiClient,
+	registry: string,
+	names: string[],
 ) {
-  try {
-    await client.delete("/api/cli/items/delete", { registry, names });
-  } catch (e: any) {
-    log.error(`Failed to prune items: ${e.message}`);
-  }
+	try {
+		await client.delete("/api/cli/items/delete", { registry, names });
+	} catch (e: any) {
+		log.error(`Failed to prune items: ${e.message}`);
+	}
 }
 
 function prompt(question: string): Promise<string> {
-  const rl = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => {
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
+	const rl = createInterface({
+		input: process.stdin,
+		output: process.stdout,
+	});
+	return new Promise((resolve) => {
+		rl.question(question, (answer) => {
+			rl.close();
+			resolve(answer.trim());
+		});
+	});
 }

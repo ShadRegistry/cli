@@ -62,16 +62,15 @@ vi.mock("node:child_process", () => ({
 	execSync: vi.fn(),
 }));
 
-// Mock https to prevent real network calls — template download always falls back
+// Mock https — configurable per-test via mockHttpsGet
+const mockHttpsGet = vi.fn();
 vi.mock("node:https", () => ({
 	default: {
-		get: vi.fn(() => {
-			throw new Error("Network unavailable");
-		}),
+		get: (...args: any[]) => mockHttpsGet(...args),
 	},
 }));
 
-import { initCommand } from "./init.js";
+import { initCommand, patchTemplateFiles } from "./init.js";
 import { resolveToken } from "../lib/auth.js";
 import {
 	configExists,
@@ -100,6 +99,106 @@ function resetCommanderOptions(cmd: any) {
 	}
 }
 
+/**
+ * Set up mocks so that downloadTemplate succeeds.
+ * Creates a fake extracted directory with template files when tar is invoked.
+ */
+function setupSuccessfulDownload(templateFiles: Record<string, string> = {}) {
+	// Mock https.get to return a successful response
+	mockHttpsGet.mockImplementation((_url: string, cb: (resp: any) => void) => {
+		const resp = {
+			statusCode: 200,
+			on: (event: string, handler: Function) => {
+				if (event === "data") handler(Buffer.from("fake-tar-data"));
+				if (event === "end") handler();
+				return resp;
+			},
+			resume: vi.fn(),
+		};
+		cb(resp);
+		return { on: vi.fn() };
+	});
+
+	// Mock execSync: when tar is called, create fake extracted dir with template files
+	vi.mocked(execSync).mockImplementation((cmd: string) => {
+		if (typeof cmd === "string" && cmd.includes("tar")) {
+			const match = cmd.match(/-C "([^"]+)"/);
+			if (match) {
+				const extractDir = match[1];
+				const templateDir = join(extractDir, "registry-template-main");
+				mkdirSync(templateDir, { recursive: true });
+
+				// Write default Vite template files
+				const defaults: Record<string, string> = {
+					"package.json": JSON.stringify({
+						name: "{{REGISTRY_NAME}}-registry",
+						private: true,
+						scripts: { build: "shadcn build", dev: "shadregistry dev --preview" },
+						dependencies: { clsx: "^2.1.1", "tailwind-merge": "^3.0.0" },
+						devDependencies: {
+							react: "^19.0.0",
+							"react-dom": "^19.0.0",
+							shadcn: "^3.0.0",
+							vite: "^6.0.0",
+							"@vitejs/plugin-react": "^4.0.0",
+							tailwindcss: "^4.0.0",
+							"@tailwindcss/vite": "^4.0.0",
+						},
+					}),
+					"registry.json": JSON.stringify({
+						$schema: "https://ui.shadcn.com/schema/registry.json",
+						name: "{{REGISTRY_NAME}}",
+						homepage: "",
+						items: [],
+					}),
+					"components.json": JSON.stringify({
+						$schema: "https://ui.shadcn.com/schema.json",
+						style: "new-york",
+						rsc: false,
+						tsx: true,
+						aliases: { components: "@/components", utils: "@/lib/utils" },
+					}),
+					"tsconfig.json": JSON.stringify({
+						compilerOptions: {
+							jsx: "react-jsx",
+							baseUrl: ".",
+							paths: { "@/*": ["./src/*"] },
+						},
+					}),
+					"vite.config.ts": 'import { defineConfig } from "vite";\nexport default defineConfig({ root: "src/preview" });',
+					".gitignore": "node_modules/\ndist/\npublic/r/\n",
+				};
+
+				// Create subdirs for nested files
+				mkdirSync(join(templateDir, "src/lib"), { recursive: true });
+				mkdirSync(join(templateDir, "src/preview"), { recursive: true });
+				defaults["src/lib/utils.ts"] = 'import { clsx } from "clsx";\nimport { twMerge } from "tailwind-merge";\nexport function cn(...inputs: any[]) { return twMerge(clsx(inputs)); }';
+				defaults["src/preview/index.html"] = "<html><body><div id=\"root\"></div></body></html>";
+				defaults["src/preview/App.tsx"] = "export function App() { return <div>Preview</div>; }";
+				defaults["src/preview/main.tsx"] = "import { App } from './App';";
+				defaults["src/preview/globals.css"] = "@import 'tailwindcss';";
+				defaults["src/preview/registry.ts"] = "export const components = {};";
+
+				// Merge with custom overrides
+				const files = { ...defaults, ...templateFiles };
+				for (const [path, content] of Object.entries(files)) {
+					const fullPath = join(templateDir, path);
+					mkdirSync(join(fullPath, ".."), { recursive: true });
+					writeFileSync(fullPath, content);
+				}
+			}
+		}
+		return Buffer.from("");
+	});
+}
+
+/** Set up mocks so that downloadTemplate fails. */
+function setupFailedDownload() {
+	mockHttpsGet.mockImplementation(() => {
+		throw new Error("Network unavailable");
+	});
+}
+
 beforeEach(() => {
 	vi.clearAllMocks();
 	resetCommanderOptions(initCommand);
@@ -115,6 +214,8 @@ beforeEach(() => {
 	vi.mocked(resolveToken).mockReturnValue(null);
 	vi.mocked(configExists).mockReturnValue(false);
 	vi.mocked(manifestExists).mockReturnValue(false);
+	// Default: successful download
+	setupSuccessfulDownload();
 });
 
 afterEach(() => {
@@ -133,7 +234,7 @@ describe("init command", () => {
 
 	it("creates local-only setup when not authenticated", async () => {
 		vi.mocked(resolveToken).mockReturnValue(null);
-		readlineAnswers = ["my-registry"]; // registry name prompt
+		readlineAnswers = ["my-registry", "2"]; // registry name, then Vite
 		await initCommand.parseAsync(["node", "shadregistry"]);
 		expect(writeConfig).toHaveBeenCalledWith(
 			expect.objectContaining({
@@ -240,7 +341,7 @@ describe("init command", () => {
 	it("warns when API listing fails but continues locally", async () => {
 		vi.mocked(resolveToken).mockReturnValue("token123");
 		mockGet.mockRejectedValue(new Error("Network down"));
-		readlineAnswers = ["fallback-reg"]; // registry name prompt
+		readlineAnswers = ["fallback-reg", "2"]; // registry name, then Vite
 		await initCommand.parseAsync(["node", "shadregistry"]);
 		expect(log.warn).toHaveBeenCalledWith(
 			expect.stringContaining("Could not fetch registries"),
@@ -260,59 +361,6 @@ describe("init command", () => {
 		expect(existsSync(join(tmpDir, "src/registry/new-york/items"))).toBe(true);
 	});
 
-	it("creates components.json for shadcn build", async () => {
-		vi.mocked(resolveToken).mockReturnValue(null);
-		await initCommand.parseAsync([
-			"node",
-			"shadregistry",
-			"--name",
-			"test-reg",
-			"--yes",
-		]);
-		const componentsPath = join(tmpDir, "components.json");
-		expect(existsSync(componentsPath)).toBe(true);
-		const components = JSON.parse(readFileSync(componentsPath, "utf-8"));
-		expect(components.aliases.components).toBe("@/components");
-		expect(components.style).toBe("new-york");
-	});
-
-	it("creates package.json with shadcn and build script", async () => {
-		vi.mocked(resolveToken).mockReturnValue(null);
-		await initCommand.parseAsync([
-			"node",
-			"shadregistry",
-			"--name",
-			"test-reg",
-			"--yes",
-		]);
-		const pkgPath = join(tmpDir, "package.json");
-		expect(existsSync(pkgPath)).toBe(true);
-		const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-		expect(pkg.devDependencies).toHaveProperty("react");
-		expect(pkg.devDependencies).toHaveProperty("shadcn");
-		expect(pkg.dependencies).toHaveProperty("clsx");
-		expect(pkg.dependencies).toHaveProperty("tailwind-merge");
-		expect(pkg.scripts.build).toBe("shadcn build");
-		expect(execSync).toHaveBeenCalled();
-	});
-
-	it("creates src/lib/utils.ts with cn helper", async () => {
-		vi.mocked(resolveToken).mockReturnValue(null);
-		await initCommand.parseAsync([
-			"node",
-			"shadregistry",
-			"--name",
-			"test-reg",
-			"--yes",
-		]);
-		const utilsPath = join(tmpDir, "src/lib/utils.ts");
-		expect(existsSync(utilsPath)).toBe(true);
-		const content = readFileSync(utilsPath, "utf-8");
-		expect(content).toContain("export function cn(");
-		expect(content).toContain('from "clsx"');
-		expect(content).toContain('from "tailwind-merge"');
-	});
-
 	it("does not overwrite existing package.json", async () => {
 		vi.mocked(resolveToken).mockReturnValue(null);
 		writeFileSync(
@@ -326,10 +374,12 @@ describe("init command", () => {
 			"test-reg",
 			"--yes",
 		]);
+		// copyDirRecursive skips existing files, but patchTemplateFiles will
+		// update the name field via JSON patching
 		const pkg = JSON.parse(
 			readFileSync(join(tmpDir, "package.json"), "utf-8"),
 		);
-		expect(pkg.name).toBe("existing");
+		expect(pkg.name).toBe("test-reg-registry");
 	});
 
 	it("warns about missing deps when package.json already exists", async () => {
@@ -356,127 +406,22 @@ describe("init command", () => {
 		);
 	});
 
-	it("creates tsconfig.json with @/ path aliases", async () => {
+	it("exits with error when template download fails", async () => {
+		setupFailedDownload();
 		vi.mocked(resolveToken).mockReturnValue(null);
-		await initCommand.parseAsync([
-			"node",
-			"shadregistry",
-			"--name",
-			"test-reg",
-			"--yes",
-		]);
-		const tsconfigPath = join(tmpDir, "tsconfig.json");
-		expect(existsSync(tsconfigPath)).toBe(true);
-		const tsconfig = JSON.parse(readFileSync(tsconfigPath, "utf-8"));
-		expect(tsconfig.compilerOptions.jsx).toBe("react-jsx");
-		expect(tsconfig.compilerOptions.baseUrl).toBe(".");
-		expect(tsconfig.compilerOptions.paths["@/*"]).toEqual(["./src/*"]);
-	});
-
-	it("warns when auto-install fails", async () => {
-		vi.mocked(resolveToken).mockReturnValue(null);
-		vi.mocked(execSync).mockImplementation(() => {
-			throw new Error("Command not found");
-		});
-		await initCommand.parseAsync([
-			"node",
-			"shadregistry",
-			"--name",
-			"test-reg",
-			"--yes",
-		]);
-		expect(log.warn).toHaveBeenCalledWith(
-			expect.stringContaining("Could not auto-install"),
+		await initCommand
+			.parseAsync([
+				"node",
+				"shadregistry",
+				"--name",
+				"test-reg",
+				"--yes",
+			])
+			.catch(() => {});
+		expect(mockExit).toHaveBeenCalledWith(1);
+		expect(log.error).toHaveBeenCalledWith(
+			expect.stringContaining("Failed to download template"),
 		);
-	});
-
-	it("creates preview app files and vite config", async () => {
-		vi.mocked(resolveToken).mockReturnValue(null);
-		await initCommand.parseAsync([
-			"node",
-			"shadregistry",
-			"--name",
-			"test-reg",
-			"--yes",
-		]);
-		expect(existsSync(join(tmpDir, "vite.config.ts"))).toBe(true);
-		expect(existsSync(join(tmpDir, "src/preview/index.html"))).toBe(true);
-		expect(existsSync(join(tmpDir, "src/preview/main.tsx"))).toBe(true);
-		expect(existsSync(join(tmpDir, "src/preview/App.tsx"))).toBe(true);
-		expect(existsSync(join(tmpDir, "src/preview/registry.ts"))).toBe(true);
-		expect(existsSync(join(tmpDir, "src/preview/globals.css"))).toBe(true);
-
-		const viteConfig = readFileSync(join(tmpDir, "vite.config.ts"), "utf-8");
-		expect(viteConfig).toContain("src/preview");
-		expect(viteConfig).toContain('"@"');
-	});
-
-	it("creates .gitignore with build output and node_modules", async () => {
-		vi.mocked(resolveToken).mockReturnValue(null);
-		await initCommand.parseAsync([
-			"node",
-			"shadregistry",
-			"--name",
-			"test-reg",
-			"--yes",
-		]);
-		const gitignore = readFileSync(join(tmpDir, ".gitignore"), "utf-8");
-		expect(gitignore).toContain("node_modules/");
-		expect(gitignore).toContain("public/r/");
-		expect(gitignore).toContain("dist/");
-	});
-
-	it("includes vite deps in generated package.json", async () => {
-		vi.mocked(resolveToken).mockReturnValue(null);
-		await initCommand.parseAsync([
-			"node",
-			"shadregistry",
-			"--name",
-			"test-reg",
-			"--yes",
-		]);
-		const pkg = JSON.parse(readFileSync(join(tmpDir, "package.json"), "utf-8"));
-		expect(pkg.devDependencies).toHaveProperty("vite");
-		expect(pkg.devDependencies).toHaveProperty("@vitejs/plugin-react");
-		expect(pkg.devDependencies).toHaveProperty("react-dom");
-		expect(pkg.devDependencies).toHaveProperty("tailwindcss");
-		expect(pkg.scripts.dev).toBe("shadregistry dev --preview");
-	});
-
-	it("does not overwrite existing preview files", async () => {
-		vi.mocked(resolveToken).mockReturnValue(null);
-		mkdirSync(join(tmpDir, "src/preview"), { recursive: true });
-		writeFileSync(join(tmpDir, "src/preview/App.tsx"), "custom content");
-		await initCommand.parseAsync([
-			"node",
-			"shadregistry",
-			"--name",
-			"test-reg",
-			"--yes",
-		]);
-		const content = readFileSync(join(tmpDir, "src/preview/App.tsx"), "utf-8");
-		expect(content).toBe("custom content");
-	});
-
-	it("falls back to built-in generators when template download fails", async () => {
-		vi.mocked(resolveToken).mockReturnValue(null);
-		await initCommand.parseAsync([
-			"node",
-			"shadregistry",
-			"--name",
-			"test-reg",
-			"--yes",
-		]);
-		expect(log.warn).toHaveBeenCalledWith(
-			expect.stringContaining("Using built-in fallback"),
-		);
-		// Verify fallback created all expected files
-		expect(existsSync(join(tmpDir, "package.json"))).toBe(true);
-		expect(existsSync(join(tmpDir, "components.json"))).toBe(true);
-		expect(existsSync(join(tmpDir, "tsconfig.json"))).toBe(true);
-		expect(existsSync(join(tmpDir, "vite.config.ts"))).toBe(true);
-		expect(existsSync(join(tmpDir, "src/lib/utils.ts"))).toBe(true);
-		expect(existsSync(join(tmpDir, ".gitignore"))).toBe(true);
 	});
 
 	it("accepts --template flag for custom template repo", async () => {
@@ -490,16 +435,12 @@ describe("init command", () => {
 			"myorg/my-template",
 			"--yes",
 		]);
-		// Download fails (mocked), falls back to built-in generators
-		expect(log.warn).toHaveBeenCalledWith(
-			expect.stringContaining("Using built-in fallback"),
-		);
 		expect(log.success).toHaveBeenCalledWith(
 			expect.stringContaining("Initialized"),
 		);
 	});
 
-	it("includes registry name in fallback package.json", async () => {
+	it("patches package.json name from template", async () => {
 		vi.mocked(resolveToken).mockReturnValue(null);
 		await initCommand.parseAsync([
 			"node",
@@ -512,5 +453,152 @@ describe("init command", () => {
 			readFileSync(join(tmpDir, "package.json"), "utf-8"),
 		);
 		expect(pkg.name).toBe("my-cool-lib-registry");
+	});
+
+	// Template flavor selection tests
+	it("defaults to Vite template with --yes flag", async () => {
+		vi.mocked(resolveToken).mockReturnValue(null);
+		await initCommand.parseAsync([
+			"node",
+			"shadregistry",
+			"--name",
+			"test-reg",
+			"--yes",
+		]);
+		expect(writeConfig).toHaveBeenCalledWith(
+			expect.objectContaining({ templateFlavor: "vite" }),
+			tmpDir,
+		);
+	});
+
+	it("selects Next.js template when user chooses option 1", async () => {
+		setupSuccessfulDownload({
+			"package.json": JSON.stringify({ name: "registry", private: true }),
+			"registry.json": JSON.stringify({ name: "acme", items: [] }),
+			"next.config.ts": "export default {};",
+		});
+		vi.mocked(resolveToken).mockReturnValue(null);
+		readlineAnswers = ["test-reg", "1"]; // name, then Next.js
+		await initCommand.parseAsync(["node", "shadregistry"]);
+		expect(writeConfig).toHaveBeenCalledWith(
+			expect.objectContaining({ templateFlavor: "nextjs" }),
+			tmpDir,
+		);
+	});
+
+	it("selects Vite template when user chooses option 2", async () => {
+		vi.mocked(resolveToken).mockReturnValue(null);
+		readlineAnswers = ["test-reg", "2"]; // name, then Vite
+		await initCommand.parseAsync(["node", "shadregistry"]);
+		expect(writeConfig).toHaveBeenCalledWith(
+			expect.objectContaining({ templateFlavor: "vite" }),
+			tmpDir,
+		);
+	});
+
+	it("skips flavor prompt when --template is explicitly provided", async () => {
+		vi.mocked(resolveToken).mockReturnValue(null);
+		// No flavor prompt answer needed in readlineAnswers
+		await initCommand.parseAsync([
+			"node",
+			"shadregistry",
+			"--name",
+			"test-reg",
+			"--template",
+			"myorg/custom-template",
+			"--yes",
+		]);
+		// Should default to vite flavor for custom templates
+		expect(writeConfig).toHaveBeenCalledWith(
+			expect.objectContaining({ templateFlavor: "vite" }),
+			tmpDir,
+		);
+	});
+
+	it("shows Next.js next steps when nextjs flavor selected", async () => {
+		setupSuccessfulDownload({
+			"package.json": JSON.stringify({ name: "registry", private: true }),
+			"registry.json": JSON.stringify({ name: "acme", items: [] }),
+		});
+		vi.mocked(resolveToken).mockReturnValue(null);
+		readlineAnswers = ["test-reg", "1"]; // name, then Next.js
+		await initCommand.parseAsync(["node", "shadregistry"]);
+		expect(log.info).toHaveBeenCalledWith(
+			expect.stringContaining("npm run dev"),
+		);
+	});
+
+	it("shows Vite next steps with --yes flag", async () => {
+		vi.mocked(resolveToken).mockReturnValue(null);
+		await initCommand.parseAsync([
+			"node",
+			"shadregistry",
+			"--name",
+			"test-reg",
+			"--yes",
+		]);
+		expect(log.info).toHaveBeenCalledWith(
+			expect.stringContaining("shadr dev --preview"),
+		);
+	});
+});
+
+describe("patchTemplateFiles", () => {
+	it("replaces placeholder variables in template files", () => {
+		writeFileSync(
+			join(tmpDir, "package.json"),
+			JSON.stringify({ name: "{{REGISTRY_NAME}}-registry" }),
+		);
+		writeFileSync(
+			join(tmpDir, "registry.json"),
+			JSON.stringify({ name: "{{REGISTRY_NAME}}", items: [] }),
+		);
+
+		patchTemplateFiles(tmpDir, {
+			registryName: "my-lib",
+			sourceDir: "src/registry/new-york/items",
+			hostname: "https://shadregistry.com",
+		});
+
+		const pkg = JSON.parse(readFileSync(join(tmpDir, "package.json"), "utf-8"));
+		expect(pkg.name).toBe("my-lib-registry");
+		const registry = JSON.parse(readFileSync(join(tmpDir, "registry.json"), "utf-8"));
+		expect(registry.name).toBe("my-lib");
+	});
+
+	it("patches JSON name fields even without placeholders (Next.js template)", () => {
+		writeFileSync(
+			join(tmpDir, "package.json"),
+			JSON.stringify({ name: "registry", version: "0.1.0" }),
+		);
+		writeFileSync(
+			join(tmpDir, "registry.json"),
+			JSON.stringify({ name: "acme", homepage: "https://acme.com", items: [] }),
+		);
+
+		patchTemplateFiles(tmpDir, {
+			registryName: "my-lib",
+			sourceDir: "src/registry/new-york/items",
+			hostname: "https://shadregistry.com",
+		});
+
+		const pkg = JSON.parse(readFileSync(join(tmpDir, "package.json"), "utf-8"));
+		expect(pkg.name).toBe("my-lib-registry");
+		expect(pkg.version).toBe("0.1.0"); // preserved
+
+		const registry = JSON.parse(readFileSync(join(tmpDir, "registry.json"), "utf-8"));
+		expect(registry.name).toBe("my-lib");
+		expect(registry.homepage).toBe("https://acme.com"); // preserved
+	});
+
+	it("skips missing files gracefully", () => {
+		// No files in tmpDir — should not throw
+		expect(() =>
+			patchTemplateFiles(tmpDir, {
+				registryName: "my-lib",
+				sourceDir: "src/registry/new-york/items",
+				hostname: "https://shadregistry.com",
+			}),
+		).not.toThrow();
 	});
 });

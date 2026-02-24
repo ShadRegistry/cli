@@ -20,6 +20,7 @@ vi.mock("../lib/api-client.js", () => ({
 
 vi.mock("../lib/config.js", () => ({
 	readConfig: vi.fn(),
+	writeConfig: vi.fn(),
 }));
 
 vi.mock("../lib/registry-builder.js", () => ({
@@ -151,8 +152,46 @@ describe("publish command", () => {
 		);
 	});
 
-	it("exits with 1 when no config", async () => {
+	it("lists registries and creates config when no config exists", async () => {
 		vi.mocked(readConfig).mockReturnValue(null);
+		mockGet.mockResolvedValueOnce({
+			registries: [
+				{ name: "my-lib", displayName: "My Lib", isPrivate: false },
+			],
+		}).mockResolvedValue({ items: [] });
+		readlineAnswer = "1"; // select first registry
+		await publishCommand
+			.parseAsync(["node", "shadregistry"])
+			.catch(() => {});
+		expect(log.warn).toHaveBeenCalledWith(
+			expect.stringContaining("No shadregistry.config.json found"),
+		);
+		expect(log.info).toHaveBeenCalledWith(
+			expect.stringContaining("my-lib"),
+		);
+		expect(log.success).toHaveBeenCalledWith(
+			expect.stringContaining("Created shadregistry.config.json"),
+		);
+	});
+
+	it("falls back to name prompt when no registries exist", async () => {
+		vi.mocked(readConfig).mockReturnValue(null);
+		mockGet.mockResolvedValueOnce({
+			registries: [],
+		}).mockResolvedValue({ items: [] });
+		readlineAnswer = "my-registry";
+		await publishCommand
+			.parseAsync(["node", "shadregistry"])
+			.catch(() => {});
+		expect(log.success).toHaveBeenCalledWith(
+			expect.stringContaining("Created shadregistry.config.json"),
+		);
+	});
+
+	it("exits with 1 when no config and empty registry name", async () => {
+		vi.mocked(readConfig).mockReturnValue(null);
+		mockGet.mockResolvedValueOnce({ registries: [] });
+		readlineAnswer = "";
 		await publishCommand
 			.parseAsync(["node", "shadregistry"])
 			.catch(() => {});

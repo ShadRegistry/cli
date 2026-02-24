@@ -11,8 +11,8 @@ export const devCommand = new Command("dev")
   .description("Build and serve registry locally for testing")
   .option("--port <port>", "Port to serve on", "4200")
   .option("--no-watch", "Disable file watching")
-  .option("--preview", "Launch Vite preview app alongside the registry server", false)
-  .option("--preview-port <port>", "Port for Vite preview server", "4201")
+  .option("--preview", "Launch preview app alongside the registry server", false)
+  .option("--preview-port <port>", "Port for preview server", "4201")
   .option("--output <dir>", "Build output directory", DEFAULT_BUILD_OUTPUT)
   .action(async (opts) => {
     const cwd = process.cwd();
@@ -91,10 +91,15 @@ export const devCommand = new Command("dev")
       }
     });
 
-    // Launch Vite preview if requested
-    let viteProcess: ChildProcess | null = null;
+    // Launch preview if requested
+    let previewProcess: ChildProcess | null = null;
     if (opts.preview) {
-      viteProcess = startVitePreview(cwd, parseInt(opts.previewPort, 10));
+      const flavor = detectFlavor(cwd, config);
+      if (flavor === "nextjs") {
+        previewProcess = startNextPreview(cwd, parseInt(opts.previewPort, 10));
+      } else {
+        previewProcess = startVitePreview(cwd, parseInt(opts.previewPort, 10));
+      }
     }
 
     server.listen(port, () => {
@@ -165,7 +170,7 @@ export const devCommand = new Command("dev")
 
     // Keep process alive
     process.on("SIGINT", () => {
-      if (viteProcess) viteProcess.kill();
+      if (previewProcess) previewProcess.kill();
       server.close();
       process.exit(0);
     });
@@ -193,6 +198,49 @@ function listBuildItems(outputDir: string): string[] {
     .filter((f) => f.endsWith(".json") && f !== "registry.json")
     .map((f) => f.replace(/\.json$/, ""))
     .sort();
+}
+
+function detectFlavor(cwd: string, config: { templateFlavor?: string } | null): "vite" | "nextjs" {
+  if (config?.templateFlavor === "nextjs") return "nextjs";
+  if (config?.templateFlavor === "vite") return "vite";
+
+  // Heuristic fallback: check for next.config.*
+  if (
+    existsSync(resolve(cwd, "next.config.js")) ||
+    existsSync(resolve(cwd, "next.config.mjs")) ||
+    existsSync(resolve(cwd, "next.config.ts"))
+  ) {
+    return "nextjs";
+  }
+
+  return "vite";
+}
+
+function startNextPreview(cwd: string, port: number): ChildProcess {
+  log.info("Starting Next.js dev server...");
+  const child = spawn("npx", ["next", "dev", "--port", String(port)], {
+    cwd,
+    stdio: "pipe",
+    env: { ...process.env },
+  });
+
+  child.stdout?.on("data", (data: Buffer) => {
+    const text = data.toString().trim();
+    if (text) log.info(text);
+  });
+
+  child.stderr?.on("data", (data: Buffer) => {
+    const text = data.toString().trim();
+    if (text && !text.includes("ExperimentalWarning")) {
+      log.warn(text);
+    }
+  });
+
+  child.on("error", () => {
+    log.error("Failed to start Next.js. Is it installed? Run `npm install`.");
+  });
+
+  return child;
 }
 
 function startVitePreview(cwd: string, port: number): ChildProcess {
