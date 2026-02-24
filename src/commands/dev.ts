@@ -4,7 +4,7 @@ import { resolve, join } from "node:path";
 import { execSync, spawn, type ChildProcess } from "node:child_process";
 import { Command } from "commander";
 import { log } from "../lib/logger.js";
-import { readConfig, readManifest } from "../lib/config.js";
+import { readConfig } from "../lib/config.js";
 import { DEFAULT_BUILD_OUTPUT } from "../lib/constants.js";
 
 export const devCommand = new Command("dev")
@@ -25,9 +25,6 @@ export const devCommand = new Command("dev")
       );
       process.exit(1);
     }
-
-    // Read manifest to get item names for display
-    const manifest = readManifest(cwd);
 
     const port = parseInt(opts.port, 10);
     const outputDir = resolve(cwd, opts.output);
@@ -94,12 +91,7 @@ export const devCommand = new Command("dev")
     // Launch preview if requested
     let previewProcess: ChildProcess | null = null;
     if (opts.preview) {
-      const flavor = detectFlavor(cwd, config);
-      if (flavor === "nextjs") {
-        previewProcess = startNextPreview(cwd, parseInt(opts.previewPort, 10));
-      } else {
-        previewProcess = startVitePreview(cwd, parseInt(opts.previewPort, 10));
-      }
+      previewProcess = startNextPreview(cwd, parseInt(opts.previewPort, 10));
     }
 
     server.listen(port, () => {
@@ -200,22 +192,6 @@ function listBuildItems(outputDir: string): string[] {
     .sort();
 }
 
-function detectFlavor(cwd: string, config: { templateFlavor?: string } | null): "vite" | "nextjs" {
-  if (config?.templateFlavor === "nextjs") return "nextjs";
-  if (config?.templateFlavor === "vite") return "vite";
-
-  // Heuristic fallback: check for next.config.*
-  if (
-    existsSync(resolve(cwd, "next.config.js")) ||
-    existsSync(resolve(cwd, "next.config.mjs")) ||
-    existsSync(resolve(cwd, "next.config.ts"))
-  ) {
-    return "nextjs";
-  }
-
-  return "vite";
-}
-
 function startNextPreview(cwd: string, port: number): ChildProcess {
   log.info("Starting Next.js dev server...");
   const child = spawn("npx", ["next", "dev", "--port", String(port)], {
@@ -243,45 +219,3 @@ function startNextPreview(cwd: string, port: number): ChildProcess {
   return child;
 }
 
-function startVitePreview(cwd: string, port: number): ChildProcess {
-  const viteConfigPath = resolve(cwd, "vite.config.ts");
-  if (!existsSync(viteConfigPath)) {
-    log.warn(
-      "No vite.config.ts found. Run `shadr init` to set up the preview app.",
-    );
-    return spawn("true");
-  }
-
-  const previewDir = resolve(cwd, "src/preview");
-  if (!existsSync(previewDir)) {
-    log.warn(
-      "No src/preview/ directory found. Run `shadr init` to set up the preview app.",
-    );
-    return spawn("true");
-  }
-
-  log.info("Starting preview server...");
-  const child = spawn("npx", ["vite", "--port", String(port)], {
-    cwd,
-    stdio: "pipe",
-    env: { ...process.env },
-  });
-
-  child.stdout?.on("data", (data: Buffer) => {
-    const text = data.toString().trim();
-    if (text) log.info(text);
-  });
-
-  child.stderr?.on("data", (data: Buffer) => {
-    const text = data.toString().trim();
-    if (text && !text.includes("ExperimentalWarning")) {
-      log.warn(text);
-    }
-  });
-
-  child.on("error", () => {
-    log.error("Failed to start Vite. Is it installed? Run `npm install`.");
-  });
-
-  return child;
-}

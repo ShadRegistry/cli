@@ -22,7 +22,7 @@ import {
 	writeConfig,
 	writeManifest,
 } from "../lib/config.js";
-import { DEFAULT_SOURCE_DIR, DEFAULT_TEMPLATE, NEXTJS_TEMPLATE } from "../lib/constants.js";
+import { DEFAULT_SOURCE_DIR, DEFAULT_TEMPLATE } from "../lib/constants.js";
 import { log } from "../lib/logger.js";
 
 export const initCommand = new Command("init")
@@ -164,31 +164,7 @@ export const initCommand = new Command("init")
 			displayName = toTitleCase(registryName);
 		}
 
-		// Determine template flavor
-		let templateRepo = opts.template;
-		let flavor: "vite" | "nextjs" = "vite";
-		const templateExplicitlySet =
-			initCommand.getOptionValueSource("template") !== "default";
-
-		if (!templateExplicitlySet) {
-			if (opts.yes) {
-				flavor = "vite";
-				templateRepo = DEFAULT_TEMPLATE;
-			} else {
-				log.info("Which template would you like to use?");
-				log.info("  1. Next.js");
-				log.info("  2. Vite");
-				log.newline();
-				const choice = await prompt("Template (1/2): ");
-				if (choice === "1" || choice.toLowerCase() === "nextjs" || choice.toLowerCase() === "next") {
-					flavor = "nextjs";
-					templateRepo = NEXTJS_TEMPLATE;
-				} else {
-					flavor = "vite";
-					templateRepo = DEFAULT_TEMPLATE;
-				}
-			}
-		}
+		const templateRepo = opts.template;
 
 		// Write config (before download so template won't overwrite it)
 		writeConfig(
@@ -197,7 +173,6 @@ export const initCommand = new Command("init")
 				registry: registryName,
 				sourceDir,
 				url: hostname,
-				templateFlavor: flavor,
 			},
 			cwd,
 		);
@@ -234,19 +209,11 @@ export const initCommand = new Command("init")
 		// Warn about deps if package.json already existed
 		const needsInstall = !hadPackageJson && existsSync(join(cwd, "package.json"));
 		if (hadPackageJson) {
-			if (flavor === "nextjs") {
-				log.warn(
-					"package.json already exists — make sure the following are installed:\n" +
-						"  npm install clsx tailwind-merge\n" +
-						"  npm install -D shadcn",
-				);
-			} else {
-				log.warn(
-					"package.json already exists — make sure the following are installed:\n" +
-						"  npm install clsx tailwind-merge\n" +
-						"  npm install -D shadcn react-dom vite @vitejs/plugin-react tailwindcss @tailwindcss/vite",
-				);
-			}
+			log.warn(
+				"package.json already exists — make sure the following are installed:\n" +
+					"  npm install clsx tailwind-merge\n" +
+					"  npm install -D shadcn",
+			);
 		}
 
 		// Auto-install dependencies if we created package.json
@@ -267,11 +234,7 @@ export const initCommand = new Command("init")
 		log.newline();
 		log.info("Next steps:");
 		log.info(`  shadr add my-component    # Scaffold a new component`);
-		if (flavor === "nextjs") {
-			log.info(`  npm run dev               # Start Next.js dev server`);
-		} else {
-			log.info(`  shadr dev --preview       # Preview components in browser`);
-		}
+		log.info(`  npm run dev               # Start Next.js dev server`);
 		log.info(`  shadcn build              # Build the registry`);
 		log.info(`  shadr publish             # Publish to the registry`);
 		log.newline();

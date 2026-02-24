@@ -128,33 +128,29 @@ function setupSuccessfulDownload(templateFiles: Record<string, string> = {}) {
 				const templateDir = join(extractDir, "registry-template-main");
 				mkdirSync(templateDir, { recursive: true });
 
-				// Write default Vite template files
+				// Write default Next.js template files
 				const defaults: Record<string, string> = {
 					"package.json": JSON.stringify({
-						name: "{{REGISTRY_NAME}}-registry",
+						name: "registry",
 						private: true,
-						scripts: { build: "shadcn build", dev: "shadregistry dev --preview" },
-						dependencies: { clsx: "^2.1.1", "tailwind-merge": "^3.0.0" },
+						scripts: { build: "shadcn build", dev: "next dev" },
+						dependencies: { clsx: "^2.1.1", "tailwind-merge": "^3.0.0", next: "^15.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
 						devDependencies: {
-							react: "^19.0.0",
-							"react-dom": "^19.0.0",
 							shadcn: "^3.0.0",
-							vite: "^6.0.0",
-							"@vitejs/plugin-react": "^4.0.0",
 							tailwindcss: "^4.0.0",
-							"@tailwindcss/vite": "^4.0.0",
+							typescript: "^5.0.0",
 						},
 					}),
 					"registry.json": JSON.stringify({
 						$schema: "https://ui.shadcn.com/schema/registry.json",
-						name: "{{REGISTRY_NAME}}",
+						name: "acme",
 						homepage: "",
 						items: [],
 					}),
 					"components.json": JSON.stringify({
 						$schema: "https://ui.shadcn.com/schema.json",
 						style: "new-york",
-						rsc: false,
+						rsc: true,
 						tsx: true,
 						aliases: { components: "@/components", utils: "@/lib/utils" },
 					}),
@@ -165,19 +161,13 @@ function setupSuccessfulDownload(templateFiles: Record<string, string> = {}) {
 							paths: { "@/*": ["./src/*"] },
 						},
 					}),
-					"vite.config.ts": 'import { defineConfig } from "vite";\nexport default defineConfig({ root: "src/preview" });',
-					".gitignore": "node_modules/\ndist/\npublic/r/\n",
+					"next.config.ts": "export default {};",
+					".gitignore": "node_modules/\n.next/\npublic/r/\n",
 				};
 
 				// Create subdirs for nested files
 				mkdirSync(join(templateDir, "src/lib"), { recursive: true });
-				mkdirSync(join(templateDir, "src/preview"), { recursive: true });
 				defaults["src/lib/utils.ts"] = 'import { clsx } from "clsx";\nimport { twMerge } from "tailwind-merge";\nexport function cn(...inputs: any[]) { return twMerge(clsx(inputs)); }';
-				defaults["src/preview/index.html"] = "<html><body><div id=\"root\"></div></body></html>";
-				defaults["src/preview/App.tsx"] = "export function App() { return <div>Preview</div>; }";
-				defaults["src/preview/main.tsx"] = "import { App } from './App';";
-				defaults["src/preview/globals.css"] = "@import 'tailwindcss';";
-				defaults["src/preview/registry.ts"] = "export const components = {};";
 
 				// Merge with custom overrides
 				const files = { ...defaults, ...templateFiles };
@@ -234,7 +224,7 @@ describe("init command", () => {
 
 	it("creates local-only setup when not authenticated", async () => {
 		vi.mocked(resolveToken).mockReturnValue(null);
-		readlineAnswers = ["my-registry", "2"]; // registry name, then Vite
+		readlineAnswers = ["my-registry"]; // registry name
 		await initCommand.parseAsync(["node", "shadregistry"]);
 		expect(writeConfig).toHaveBeenCalledWith(
 			expect.objectContaining({
@@ -341,7 +331,7 @@ describe("init command", () => {
 	it("warns when API listing fails but continues locally", async () => {
 		vi.mocked(resolveToken).mockReturnValue("token123");
 		mockGet.mockRejectedValue(new Error("Network down"));
-		readlineAnswers = ["fallback-reg", "2"]; // registry name, then Vite
+		readlineAnswers = ["fallback-reg"]; // registry name
 		await initCommand.parseAsync(["node", "shadregistry"]);
 		expect(log.warn).toHaveBeenCalledWith(
 			expect.stringContaining("Could not fetch registries"),
@@ -455,50 +445,16 @@ describe("init command", () => {
 		expect(pkg.name).toBe("my-cool-lib-registry");
 	});
 
-	// Template flavor selection tests
-	it("defaults to Vite template with --yes flag", async () => {
+	it("writes config without templateFlavor", async () => {
 		vi.mocked(resolveToken).mockReturnValue(null);
-		await initCommand.parseAsync([
-			"node",
-			"shadregistry",
-			"--name",
-			"test-reg",
-			"--yes",
-		]);
-		expect(writeConfig).toHaveBeenCalledWith(
-			expect.objectContaining({ templateFlavor: "vite" }),
-			tmpDir,
-		);
-	});
-
-	it("selects Next.js template when user chooses option 1", async () => {
-		setupSuccessfulDownload({
-			"package.json": JSON.stringify({ name: "registry", private: true }),
-			"registry.json": JSON.stringify({ name: "acme", items: [] }),
-			"next.config.ts": "export default {};",
-		});
-		vi.mocked(resolveToken).mockReturnValue(null);
-		readlineAnswers = ["test-reg", "1"]; // name, then Next.js
+		readlineAnswers = ["test-reg"]; // name
 		await initCommand.parseAsync(["node", "shadregistry"]);
-		expect(writeConfig).toHaveBeenCalledWith(
-			expect.objectContaining({ templateFlavor: "nextjs" }),
-			tmpDir,
-		);
-	});
-
-	it("selects Vite template when user chooses option 2", async () => {
-		vi.mocked(resolveToken).mockReturnValue(null);
-		readlineAnswers = ["test-reg", "2"]; // name, then Vite
-		await initCommand.parseAsync(["node", "shadregistry"]);
-		expect(writeConfig).toHaveBeenCalledWith(
-			expect.objectContaining({ templateFlavor: "vite" }),
-			tmpDir,
-		);
+		const configArg = vi.mocked(writeConfig).mock.calls[0][0];
+		expect(configArg).not.toHaveProperty("templateFlavor");
 	});
 
 	it("skips flavor prompt when --template is explicitly provided", async () => {
 		vi.mocked(resolveToken).mockReturnValue(null);
-		// No flavor prompt answer needed in readlineAnswers
 		await initCommand.parseAsync([
 			"node",
 			"shadregistry",
@@ -508,27 +464,11 @@ describe("init command", () => {
 			"myorg/custom-template",
 			"--yes",
 		]);
-		// Should default to vite flavor for custom templates
-		expect(writeConfig).toHaveBeenCalledWith(
-			expect.objectContaining({ templateFlavor: "vite" }),
-			tmpDir,
-		);
+		const configArg = vi.mocked(writeConfig).mock.calls[0][0];
+		expect(configArg).not.toHaveProperty("templateFlavor");
 	});
 
-	it("shows Next.js next steps when nextjs flavor selected", async () => {
-		setupSuccessfulDownload({
-			"package.json": JSON.stringify({ name: "registry", private: true }),
-			"registry.json": JSON.stringify({ name: "acme", items: [] }),
-		});
-		vi.mocked(resolveToken).mockReturnValue(null);
-		readlineAnswers = ["test-reg", "1"]; // name, then Next.js
-		await initCommand.parseAsync(["node", "shadregistry"]);
-		expect(log.info).toHaveBeenCalledWith(
-			expect.stringContaining("npm run dev"),
-		);
-	});
-
-	it("shows Vite next steps with --yes flag", async () => {
+	it("shows npm run dev in next steps", async () => {
 		vi.mocked(resolveToken).mockReturnValue(null);
 		await initCommand.parseAsync([
 			"node",
@@ -538,7 +478,7 @@ describe("init command", () => {
 			"--yes",
 		]);
 		expect(log.info).toHaveBeenCalledWith(
-			expect.stringContaining("shadr dev --preview"),
+			expect.stringContaining("npm run dev"),
 		);
 	});
 });

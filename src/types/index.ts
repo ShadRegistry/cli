@@ -11,7 +11,7 @@ export interface ProjectConfig {
   registry: string;
   sourceDir: string;
   url: string;
-  templateFlavor?: "vite" | "nextjs";
+
 }
 
 export interface RegistryFile {
