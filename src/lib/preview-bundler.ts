@@ -22,8 +22,13 @@ export async function bundlePreviewCode(
 	const previewFile = payload.files.find((f) => isPreviewableFile(f.path));
 	if (!previewFile) return null;
 
-	// Try to resolve the source file on disk for best alias resolution
-	const sourceFilePath = resolve(cwd, sourceDir, payload.name, previewFile.path);
+	// Try to resolve the source file on disk for best alias resolution.
+	// Build output paths may already be fully qualified (e.g. "registry/new-york/blocks/comp/file.tsx"),
+	// so try resolving directly from cwd first, then fall back to the composed path.
+	let sourceFilePath = resolve(cwd, previewFile.path);
+	if (!existsSync(sourceFilePath)) {
+		sourceFilePath = resolve(cwd, sourceDir, payload.name, previewFile.path);
+	}
 	const sourceFileDir = dirname(sourceFilePath);
 	const sourceFileExists = existsSync(sourceFilePath);
 
@@ -42,6 +47,7 @@ export async function bundlePreviewCode(
 			jsxFragment: "React.Fragment",
 			minify: true,
 			write: false,
+			outdir: "out", // Required for esbuild to produce separate JS + CSS output files
 			target: "es2020",
 			loader: { ".tsx": "tsx", ".jsx": "jsx", ".ts": "ts", ".js": "js", ".css": "css" },
 			...(hasTsconfig ? { tsconfig: tsconfigPath } : {}),
