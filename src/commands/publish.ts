@@ -250,9 +250,41 @@ export const publishCommand = new Command("publish")
 			uploadSpinner.stop();
 
 			if (allErrors.length > 0) {
-				log.warn("Some items had errors:");
+				const TIER_LIMIT_KEYWORDS = ["plan allows", "storage limit", "Upgrade"];
+				const isTierLimitError = (msg: string) =>
+					TIER_LIMIT_KEYWORDS.some((kw) => msg.includes(kw));
+
+				const tierErrors: Array<{ name: string; error: string }> = [];
+				const otherErrors: Array<{ name: string; error: string }> = [];
 				for (const err of allErrors) {
-					log.error(`  ${err.name}: ${err.error}`);
+					if (isTierLimitError(err.error)) {
+						tierErrors.push(err);
+					} else {
+						otherErrors.push(err);
+					}
+				}
+
+				if (tierErrors.length > 0) {
+					// Group by unique error message and show count
+					const grouped = new Map<string, string[]>();
+					for (const err of tierErrors) {
+						const names = grouped.get(err.error) ?? [];
+						names.push(err.name);
+						grouped.set(err.error, names);
+					}
+					log.warn("Some items failed due to plan limits:");
+					for (const [message, names] of grouped) {
+						log.error(`  ${names.length} item${names.length !== 1 ? "s" : ""} failed: ${message}`);
+					}
+					log.newline();
+					log.info(`  Upgrade your plan: ${hostname}/dashboard/billing`);
+				}
+
+				if (otherErrors.length > 0) {
+					log.warn("Some items had errors:");
+					for (const err of otherErrors) {
+						log.error(`  ${err.name}: ${err.error}`);
+					}
 				}
 			}
 
