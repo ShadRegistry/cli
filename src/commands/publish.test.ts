@@ -18,6 +18,10 @@ vi.mock("../lib/api-client.js", () => ({
 	},
 }));
 
+vi.mock("../lib/build.js", () => ({
+	runBuild: vi.fn(),
+}));
+
 vi.mock("../lib/config.js", () => ({
 	readConfig: vi.fn(),
 	writeConfig: vi.fn(),
@@ -47,11 +51,16 @@ vi.mock("../lib/logger.js", () => ({
 }));
 
 vi.mock("ora", () => ({
-	default: vi.fn(() => ({
-		start: vi.fn().mockReturnThis(),
-		stop: vi.fn(),
-		fail: vi.fn(),
-	})),
+	default: vi.fn(() => {
+		const spinner = {
+			start: vi.fn(),
+			stop: vi.fn(),
+			fail: vi.fn(),
+			succeed: vi.fn(),
+		};
+		spinner.start.mockReturnValue(spinner);
+		return spinner;
+	}),
 }));
 
 let readlineAnswer = "y";
@@ -67,6 +76,7 @@ vi.mock("node:readline", () => ({
 
 import { publishCommand } from "./publish.js";
 import { resolveToken } from "../lib/auth.js";
+import { runBuild } from "../lib/build.js";
 import { readConfig } from "../lib/config.js";
 import { readBuildOutput, validatePayload, chunkItems } from "../lib/registry-builder.js";
 import { computeDiff } from "../lib/diff-utils.js";
@@ -123,6 +133,7 @@ function resetCommanderOptions(cmd: any) {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	vi.mocked(runBuild).mockReset();
 	resetCommanderOptions(publishCommand);
 	readlineAnswer = "y";
 	mockExit = vi
@@ -303,6 +314,35 @@ describe("publish command", () => {
 			"/api/cli/items/publish",
 			expect.anything(),
 		);
+	});
+
+	it("runs build before reading output", async () => {
+		vi.mocked(computeDiff).mockReturnValue(emptyDiff);
+		await publishCommand
+			.parseAsync(["node", "shadregistry"])
+			.catch(() => {});
+		expect(runBuild).toHaveBeenCalledWith(process.cwd());
+	});
+
+	it("exits with 1 when build fails", async () => {
+		vi.mocked(runBuild).mockImplementation(() => {
+			throw new Error("shadcn build failed.");
+		});
+		await publishCommand
+			.parseAsync(["node", "shadregistry"])
+			.catch(() => {});
+		expect(mockExit).toHaveBeenCalledWith(1);
+		expect(log.error).toHaveBeenCalledWith(
+			expect.stringContaining("shadcn build failed"),
+		);
+	});
+
+	it("skips build with --skip-build flag", async () => {
+		vi.mocked(computeDiff).mockReturnValue(emptyDiff);
+		await publishCommand
+			.parseAsync(["node", "shadregistry", "--skip-build"])
+			.catch(() => {});
+		expect(runBuild).not.toHaveBeenCalled();
 	});
 
 	it("filters payloads with --filter flag", async () => {

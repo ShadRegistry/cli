@@ -1,10 +1,11 @@
 import { createServer } from "node:http";
 import { readFileSync, existsSync, watch, readdirSync } from "node:fs";
 import { resolve, join } from "node:path";
-import { execSync, spawn, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { Command } from "commander";
 import { log } from "../lib/logger.js";
 import { readConfig } from "../lib/config.js";
+import { runBuild } from "../lib/build.js";
 import { DEFAULT_BUILD_OUTPUT } from "../lib/constants.js";
 
 export const devCommand = new Command("dev")
@@ -31,7 +32,13 @@ export const devCommand = new Command("dev")
     const sourceDir = resolve(cwd, config.sourceDir);
 
     // Run initial build
-    runBuild(cwd);
+    log.info("Building registry...");
+    try {
+      runBuild(cwd);
+      log.success("Build complete.");
+    } catch (e: any) {
+      log.error(e.message);
+    }
 
     // Check build output exists
     if (!existsSync(outputDir)) {
@@ -130,7 +137,11 @@ export const devCommand = new Command("dev")
         rebuildTimeout = setTimeout(() => {
           log.newline();
           log.info("Changes detected, rebuilding...");
-          runBuild(cwd);
+          try {
+            runBuild(cwd);
+          } catch (e: any) {
+            log.error(e.message);
+          }
           const items = listBuildItems(outputDir);
           log.success(`Rebuilt ${items.length} item${items.length !== 1 ? "s" : ""}`);
         }, 300);
@@ -167,21 +178,6 @@ export const devCommand = new Command("dev")
       process.exit(0);
     });
   });
-
-function runBuild(cwd: string): void {
-  log.info("Building registry...");
-  try {
-    execSync("npx shadcn build", { cwd, stdio: "pipe" });
-    log.success("Build complete.");
-  } catch (e: any) {
-    const stderr = e.stderr?.toString() ?? "";
-    const stdout = e.stdout?.toString() ?? "";
-    log.error("Build failed.");
-    if (stderr) log.error(stderr);
-    if (stdout) log.info(stdout);
-    log.info("Make sure shadcn is installed: npm install -D shadcn");
-  }
-}
 
 function listBuildItems(outputDir: string): string[] {
   if (!existsSync(outputDir)) return [];

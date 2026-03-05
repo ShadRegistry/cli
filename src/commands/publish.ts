@@ -3,6 +3,7 @@ import { Command } from "commander";
 import ora from "ora";
 import { ApiClient } from "../lib/api-client.js";
 import { resolveHostname, resolveToken } from "../lib/auth.js";
+import { runBuild } from "../lib/build.js";
 import { readConfig, writeConfig } from "../lib/config.js";
 import { DEFAULT_SOURCE_DIR } from "../lib/constants.js";
 import { computeDiff, formatDiffSummary } from "../lib/diff-utils.js";
@@ -23,6 +24,7 @@ export const publishCommand = new Command("publish")
 	.option("--prune", "Delete remote items not present locally", false)
 	.option("--token <token>", "Override auth token")
 	.option("--output <dir>", "Build output directory", "public/r")
+	.option("--skip-build", "Skip the automatic shadcn build step", false)
 	.action(async (opts) => {
 		const cwd = process.cwd();
 
@@ -91,7 +93,20 @@ export const publishCommand = new Command("publish")
 			log.success("Created shadregistry.config.json");
 		}
 
-		// Step 3: Read build output
+		// Step 3: Build registry
+		if (!opts.skipBuild) {
+			const buildSpinner = ora("Building registry...").start();
+			try {
+				runBuild(cwd);
+				buildSpinner.succeed("Registry built.");
+			} catch (e: any) {
+				buildSpinner.fail("Build failed.");
+				log.error(e.message);
+				process.exit(1);
+			}
+		}
+
+		// Step 4: Read build output
 		let payloads: ItemPayload[];
 		try {
 			payloads = readBuildOutput(cwd, opts.output);
