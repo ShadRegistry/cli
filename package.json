@@ -11,7 +11,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "bun build ./src/index.ts ./bin/shadregistry.ts --outdir ./dist --target node --format esm --splitting",
+    "build": "VERSION=$(node -p \"JSON.stringify(require('./package.json').version)\") && bun build ./src/index.ts ./bin/shadregistry.ts --outdir ./dist --target node --format esm --splitting --define __PKG_VERSION__=$VERSION",
     "dev": "bun run ./bin/shadregistry.ts",
     "test": "vitest run",
     "test:watch": "vitest",

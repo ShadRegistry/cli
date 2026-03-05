@@ -1,15 +1,14 @@
-import { createRequire } from "node:module";
+declare const __PKG_VERSION__: string;
 
 /**
- * Read version from the package.json at runtime.
- * Uses createRequire to resolve package.json relative to this file,
- * which works both in development (ts source) and production (bundled dist).
+ * Read version from build-time define, with runtime fallback.
  */
 export function getVersion(): string {
+	if (typeof __PKG_VERSION__ !== "undefined") return __PKG_VERSION__;
 	try {
-		const require = createRequire(import.meta.url);
-		const pkg = require("../../package.json") as { version: string };
-		return pkg.version;
+		const { createRequire } = require("node:module");
+		const r = createRequire(import.meta.url);
+		return (r("../../package.json") as { version: string }).version;
 	} catch {
 		return "0.0.0";
 	}

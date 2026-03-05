@@ -97,6 +97,7 @@ export interface ItemPayload {
     subsets?: string[];
   };
   previewBundle?: string;
+  previewCss?: string;
 }
 
 export interface DiffResult {

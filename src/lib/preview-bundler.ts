@@ -8,11 +8,16 @@ function isPreviewableFile(path: string): boolean {
 	return ["tsx", "jsx"].includes(ext);
 }
 
+export interface PreviewBundleResult {
+	js: string;
+	css: string | null;
+}
+
 export async function bundlePreviewCode(
 	payload: ItemPayload,
 	cwd: string,
 	sourceDir: string,
-): Promise<string | null> {
+): Promise<PreviewBundleResult | null> {
 	// Find first previewable file
 	const previewFile = payload.files.find((f) => isPreviewableFile(f.path));
 	if (!previewFile) return null;
@@ -38,7 +43,7 @@ export async function bundlePreviewCode(
 			minify: true,
 			write: false,
 			target: "es2020",
-			loader: { ".tsx": "tsx", ".jsx": "jsx", ".ts": "ts", ".js": "js" },
+			loader: { ".tsx": "tsx", ".jsx": "jsx", ".ts": "ts", ".js": "js", ".css": "css" },
 			...(hasTsconfig ? { tsconfig: tsconfigPath } : {}),
 		};
 
@@ -58,7 +63,16 @@ export async function bundlePreviewCode(
 		const result = await esbuild.build(buildOptions);
 
 		if (result.outputFiles && result.outputFiles.length > 0) {
-			return result.outputFiles[0].text;
+			let js: string | null = null;
+			let css: string | null = null;
+			for (const file of result.outputFiles) {
+				if (file.path.endsWith(".css")) {
+					css = file.text;
+				} else {
+					js = file.text;
+				}
+			}
+			if (js) return { js, css };
 		}
 
 		return null;

@@ -112,7 +112,8 @@ export const publishCommand = new Command("publish")
 			try {
 				const bundle = await bundlePreviewCode(payload, cwd, config.sourceDir);
 				if (bundle) {
-					payload.previewBundle = bundle;
+					payload.previewBundle = bundle.js;
+					if (bundle.css) payload.previewCss = bundle.css;
 					bundled++;
 				}
 			} catch {
