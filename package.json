@@ -1,6 +1,6 @@
 {
   "name": "@shadregistry/cli",
-  "version": "0.2.15",
+  "version": "0.2.16",
   "description": "CLI for publishing and managing shadcn-compatible component registries on ShadRegistry",
   "type": "module",
   "bin": {
