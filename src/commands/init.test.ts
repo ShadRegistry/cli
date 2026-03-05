@@ -216,7 +216,7 @@ afterEach(() => {
 describe("init command", () => {
 	it("aborts when config exists and user declines overwrite", async () => {
 		vi.mocked(configExists).mockReturnValue(true);
-		readlineAnswers = ["n"]; // decline overwrite
+		readlineAnswers = [".", "n"]; // current dir, decline overwrite
 		await initCommand.parseAsync(["node", "shadregistry"]);
 		expect(log.info).toHaveBeenCalledWith("Aborted.");
 		expect(writeConfig).not.toHaveBeenCalled();
@@ -224,7 +224,7 @@ describe("init command", () => {
 
 	it("creates local-only setup when not authenticated", async () => {
 		vi.mocked(resolveToken).mockReturnValue(null);
-		readlineAnswers = ["my-registry"]; // registry name
+		readlineAnswers = [".", "my-registry"]; // current dir, registry name
 		await initCommand.parseAsync(["node", "shadregistry"]);
 		expect(writeConfig).toHaveBeenCalledWith(
 			expect.objectContaining({
@@ -331,7 +331,7 @@ describe("init command", () => {
 	it("warns when API listing fails but continues locally", async () => {
 		vi.mocked(resolveToken).mockReturnValue("token123");
 		mockGet.mockRejectedValue(new Error("Network down"));
-		readlineAnswers = ["fallback-reg"]; // registry name
+		readlineAnswers = [".", "fallback-reg"]; // current dir, registry name
 		await initCommand.parseAsync(["node", "shadregistry"]);
 		expect(log.warn).toHaveBeenCalledWith(
 			expect.stringContaining("Could not fetch registries"),
@@ -447,7 +447,7 @@ describe("init command", () => {
 
 	it("writes config without templateFlavor", async () => {
 		vi.mocked(resolveToken).mockReturnValue(null);
-		readlineAnswers = ["test-reg"]; // name
+		readlineAnswers = [".", "test-reg"]; // current dir, name
 		await initCommand.parseAsync(["node", "shadregistry"]);
 		const configArg = vi.mocked(writeConfig).mock.calls[0][0];
 		expect(configArg).not.toHaveProperty("templateFlavor");

@@ -27,6 +27,7 @@ import { log } from "../lib/logger.js";
 
 export const initCommand = new Command("init")
 	.description("Initialize a local registry project")
+	.argument("[directory]", "Directory to create the project in (defaults to current directory)")
 	.option("--name <name>", "Registry name")
 	.option("--display-name <name>", "Human-readable display name")
 	.option("--private", "Mark registry as private", false)
@@ -41,8 +42,35 @@ export const initCommand = new Command("init")
 		DEFAULT_TEMPLATE,
 	)
 	.option("-y, --yes", "Accept all defaults", false)
-	.action(async (opts) => {
-		const cwd = process.cwd();
+	.action(async (directory: string | undefined, opts) => {
+		let cwd: string;
+
+		if (directory) {
+			cwd = resolve(process.cwd(), directory);
+		} else if (!opts.yes) {
+			const dir = await prompt("Project directory (. for current): ");
+			cwd = dir && dir !== "."
+				? resolve(process.cwd(), dir)
+				: process.cwd();
+		} else {
+			cwd = process.cwd();
+		}
+
+		if (cwd !== process.cwd()) {
+			if (existsSync(cwd) && readdirSync(cwd).length > 0) {
+				if (!opts.yes) {
+					const cont = await prompt(
+						`Directory ${directory ?? cwd} already exists and is not empty. Continue? (y/n) `,
+					);
+					if (cont.toLowerCase() !== "y") {
+						log.info("Aborted.");
+						return;
+					}
+				}
+			}
+			mkdirSync(cwd, { recursive: true });
+			log.info(`Creating project in ${cwd}`);
+		}
 
 		// Check existing config
 		if (configExists(cwd) && !opts.yes) {
@@ -233,6 +261,10 @@ export const initCommand = new Command("init")
 		log.success("Initialized shadregistry project.");
 		log.newline();
 		log.info("Next steps:");
+		if (cwd !== process.cwd()) {
+			const relative = directory ?? cwd;
+			log.info(`  cd ${relative}`);
+		}
 		log.info(`  shadr add my-component    # Scaffold a new component`);
 		log.info(`  npm run dev               # Start Next.js dev server`);
 		log.info(`  shadcn build              # Build the registry`);
