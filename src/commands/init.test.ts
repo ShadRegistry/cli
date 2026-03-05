@@ -348,7 +348,7 @@ describe("init command", () => {
 			"test-reg",
 			"--yes",
 		]);
-		expect(existsSync(join(tmpDir, "src/registry/new-york/items"))).toBe(true);
+		expect(existsSync(join(tmpDir, "registry/new-york/blocks"))).toBe(true);
 	});
 
 	it("does not overwrite existing package.json", async () => {
@@ -496,7 +496,7 @@ describe("patchTemplateFiles", () => {
 
 		patchTemplateFiles(tmpDir, {
 			registryName: "my-lib",
-			sourceDir: "src/registry/new-york/items",
+			sourceDir: "registry/new-york/blocks",
 			hostname: "https://shadregistry.com",
 		});
 
@@ -518,7 +518,7 @@ describe("patchTemplateFiles", () => {
 
 		patchTemplateFiles(tmpDir, {
 			registryName: "my-lib",
-			sourceDir: "src/registry/new-york/items",
+			sourceDir: "registry/new-york/blocks",
 			hostname: "https://shadregistry.com",
 		});
 
@@ -536,7 +536,7 @@ describe("patchTemplateFiles", () => {
 		expect(() =>
 			patchTemplateFiles(tmpDir, {
 				registryName: "my-lib",
-				sourceDir: "src/registry/new-york/items",
+				sourceDir: "registry/new-york/blocks",
 				hostname: "https://shadregistry.com",
 			}),
 		).not.toThrow();

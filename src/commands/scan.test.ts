@@ -50,7 +50,7 @@ let mockExit: ReturnType<typeof vi.spyOn>;
 
 const config: ProjectConfig = {
 	registry: "test",
-	sourceDir: "src/registry/new-york/items",
+	sourceDir: "registry/new-york/blocks",
 	url: "https://shadregistry.com",
 };
 
@@ -185,7 +185,7 @@ describe("scan command", () => {
 		vi.mocked(validateImports).mockReturnValue([
 			{
 				itemName: "my-comp",
-				filePath: "src/registry/new-york/items/my-comp/components/my-comp.tsx",
+				filePath: "registry/new-york/blocks/my-comp/components/my-comp.tsx",
 				importPath: "../../button/components/button",
 				severity: "error",
 				message: 'Cross-item relative import references item "button".',

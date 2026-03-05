@@ -14,7 +14,7 @@ let tmpDir: string;
 
 const config: ProjectConfig = {
 	registry: "test",
-	sourceDir: "src/registry/new-york/items",
+	sourceDir: "registry/new-york/blocks",
 	url: "https://shadregistry.com",
 };
 
@@ -36,7 +36,7 @@ function writeFile(relativePath: string, content: string) {
 describe("validateImports", () => {
 	it("returns no warnings for @/ alias imports", () => {
 		writeFile(
-			"src/registry/new-york/items/my-comp/components/my-comp.tsx",
+			"registry/new-york/blocks/my-comp/components/my-comp.tsx",
 			`import { cn } from "@/lib/utils";\nimport { Button } from "@/components/ui/button";\nexport function MyComp() {}`,
 		);
 
@@ -48,7 +48,7 @@ describe("validateImports", () => {
 					type: "registry:component",
 					files: [
 						{
-							path: "src/registry/new-york/items/my-comp/components/my-comp.tsx",
+							path: "registry/new-york/blocks/my-comp/components/my-comp.tsx",
 							type: "registry:ui",
 						},
 					],
@@ -62,7 +62,7 @@ describe("validateImports", () => {
 
 	it("flags cross-item relative imports as errors", () => {
 		writeFile(
-			"src/registry/new-york/items/my-comp/components/my-comp.tsx",
+			"registry/new-york/blocks/my-comp/components/my-comp.tsx",
 			`import { Button } from "../../button/components/button";\nexport function MyComp() {}`,
 		);
 
@@ -74,7 +74,7 @@ describe("validateImports", () => {
 					type: "registry:component",
 					files: [
 						{
-							path: "src/registry/new-york/items/my-comp/components/my-comp.tsx",
+							path: "registry/new-york/blocks/my-comp/components/my-comp.tsx",
 							type: "registry:ui",
 						},
 					],
@@ -84,7 +84,7 @@ describe("validateImports", () => {
 					type: "registry:component",
 					files: [
 						{
-							path: "src/registry/new-york/items/button/components/button.tsx",
+							path: "registry/new-york/blocks/button/components/button.tsx",
 							type: "registry:ui",
 						},
 					],
@@ -101,7 +101,7 @@ describe("validateImports", () => {
 
 	it("flags relative imports escaping source dir as warnings", () => {
 		writeFile(
-			"src/registry/new-york/items/my-comp/components/my-comp.tsx",
+			"registry/new-york/blocks/my-comp/components/my-comp.tsx",
 			`import { helper } from "../../../../utils/helper";\nexport function MyComp() {}`,
 		);
 
@@ -113,7 +113,7 @@ describe("validateImports", () => {
 					type: "registry:component",
 					files: [
 						{
-							path: "src/registry/new-york/items/my-comp/components/my-comp.tsx",
+							path: "registry/new-york/blocks/my-comp/components/my-comp.tsx",
 							type: "registry:ui",
 						},
 					],
@@ -129,7 +129,7 @@ describe("validateImports", () => {
 
 	it("allows relative imports within the same item", () => {
 		writeFile(
-			"src/registry/new-york/items/my-comp/components/my-comp.tsx",
+			"registry/new-york/blocks/my-comp/components/my-comp.tsx",
 			`import { helper } from "../lib/helper";\nexport function MyComp() {}`,
 		);
 
@@ -141,7 +141,7 @@ describe("validateImports", () => {
 					type: "registry:component",
 					files: [
 						{
-							path: "src/registry/new-york/items/my-comp/components/my-comp.tsx",
+							path: "registry/new-york/blocks/my-comp/components/my-comp.tsx",
 							type: "registry:ui",
 						},
 					],
@@ -155,7 +155,7 @@ describe("validateImports", () => {
 
 	it("ignores non-relative imports", () => {
 		writeFile(
-			"src/registry/new-york/items/my-comp/components/my-comp.tsx",
+			"registry/new-york/blocks/my-comp/components/my-comp.tsx",
 			`import { clsx } from "clsx";\nimport React from "react";\nexport function MyComp() {}`,
 		);
 
@@ -167,7 +167,7 @@ describe("validateImports", () => {
 					type: "registry:component",
 					files: [
 						{
-							path: "src/registry/new-york/items/my-comp/components/my-comp.tsx",
+							path: "registry/new-york/blocks/my-comp/components/my-comp.tsx",
 							type: "registry:ui",
 						},
 					],

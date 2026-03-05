@@ -76,7 +76,7 @@ let mockExit: ReturnType<typeof vi.spyOn>;
 
 const config: ProjectConfig = {
 	registry: "test",
-	sourceDir: "src/registry/new-york/items",
+	sourceDir: "registry/new-york/blocks",
 	url: "https://shadregistry.com",
 };
 
@@ -85,7 +85,7 @@ const samplePayload: ItemPayload = {
 	type: "registry:component",
 	files: [
 		{
-			path: "src/registry/new-york/items/button/components/button.tsx",
+			path: "registry/new-york/blocks/button/components/button.tsx",
 			type: "registry:ui",
 			content: "export function Button() {}",
 		},
@@ -311,7 +311,7 @@ describe("publish command", () => {
 			type: "registry:component",
 			files: [
 				{
-					path: "src/registry/new-york/items/input/components/input.tsx",
+					path: "registry/new-york/blocks/input/components/input.tsx",
 					type: "registry:ui",
 					content: "export function Input() {}",
 				},

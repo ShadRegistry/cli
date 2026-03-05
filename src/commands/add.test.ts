@@ -38,7 +38,7 @@ let mockExit: ReturnType<typeof vi.spyOn>;
 
 const validConfig: ProjectConfig = {
 	registry: "test",
-	sourceDir: "src/registry/new-york/items",
+	sourceDir: "registry/new-york/blocks",
 	url: "https://shadregistry.com",
 };
 
@@ -183,7 +183,7 @@ describe("add command", () => {
 			expect(mockExit).not.toHaveBeenCalled();
 			const filePath = join(
 				tmpDir,
-				"src/registry/new-york/items",
+				"registry/new-york/blocks",
 				"cool-button",
 				"components",
 				"cool-button.tsx",
@@ -207,7 +207,7 @@ describe("add command", () => {
 			]);
 			const filePath = join(
 				tmpDir,
-				"src/registry/new-york/items",
+				"registry/new-york/blocks",
 				"toggle",
 				"hooks",
 				"use-toggle.ts",
@@ -227,7 +227,7 @@ describe("add command", () => {
 			]);
 			const filePath = join(
 				tmpDir,
-				"src/registry/new-york/items",
+				"registry/new-york/blocks",
 				"use-toggle",
 				"hooks",
 				"use-toggle.ts",
@@ -245,7 +245,7 @@ describe("add command", () => {
 			]);
 			const filePath = join(
 				tmpDir,
-				"src/registry/new-york/items",
+				"registry/new-york/blocks",
 				"my-utils",
 				"lib",
 				"my-utils.ts",
@@ -263,7 +263,7 @@ describe("add command", () => {
 			]);
 			const filePath = join(
 				tmpDir,
-				"src/registry/new-york/items",
+				"registry/new-york/blocks",
 				"my-block",
 				"components",
 				"my-block.tsx",
@@ -283,7 +283,7 @@ describe("add command", () => {
 			]);
 			const filePath = join(
 				tmpDir,
-				"src/registry/new-york/items",
+				"registry/new-york/blocks",
 				"my-page",
 				"page.tsx",
 			);
@@ -302,7 +302,7 @@ describe("add command", () => {
 			]);
 			const filePath = join(
 				tmpDir,
-				"src/registry/new-york/items",
+				"registry/new-york/blocks",
 				"my-file",
 				"my-file.ts",
 			);
