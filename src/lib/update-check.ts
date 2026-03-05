@@ -89,9 +89,9 @@ async function fetchLatestVersion(): Promise<string | null> {
 /**
  * Check for updates non-blockingly. Returns the latest version string
  * if a newer version is available, or null otherwise.
- * Respects the 24-hour cache interval.
+ * Respects the 24-hour cache interval unless `force` is true.
  */
-export async function checkForUpdate(): Promise<string | null> {
+export async function checkForUpdate(opts?: { force?: boolean }): Promise<string | null> {
 	try {
 		// Skip in CI environments
 		if (process.env.CI || process.env.SHADREGISTRY_NO_UPDATE_CHECK) {
@@ -101,8 +101,8 @@ export async function checkForUpdate(): Promise<string | null> {
 		const cache = readCache();
 		const now = Date.now();
 
-		// If we checked recently, use cached result
-		if (cache && now - cache.lastChecked < CHECK_INTERVAL_MS) {
+		// If we checked recently, use cached result (unless forced)
+		if (!opts?.force && cache && now - cache.lastChecked < CHECK_INTERVAL_MS) {
 			const current = getVersion();
 			if (compareSemver(current, cache.latestVersion) < 0) {
 				return cache.latestVersion;

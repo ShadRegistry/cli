@@ -12,7 +12,7 @@ export const updateCommand = new Command("update")
 		const current = getVersion();
 
 		const spinner = ora("Checking for updates...").start();
-		const latestVersion = await checkForUpdate();
+		const latestVersion = await checkForUpdate({ force: true });
 		spinner.stop();
 
 		if (!latestVersion) {
