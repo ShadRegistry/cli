@@ -100,6 +100,7 @@ export const initCommand = new Command("init")
 						name: string;
 						displayName: string;
 						isPrivate: boolean;
+					organization: string | null;
 					}>;
 				}>("/api/cli/registries");
 
@@ -122,7 +123,7 @@ export const initCommand = new Command("init")
 					log.info("Your registries:");
 					registries.forEach((r, i) => {
 						log.info(
-							`  ${i + 1}. ${r.name} ${r.isPrivate ? "(private)" : "(public)"}`,
+							`  ${i + 1}. ${r.name}${r.organization ? ` [${r.organization}]` : ""} ${r.isPrivate ? "(private)" : "(public)"}`,
 						);
 					});
 					log.info(`  ${registries.length + 1}. Create a new registry`);
@@ -162,14 +163,42 @@ export const initCommand = new Command("init")
 						isPrivate = privAnswer.toLowerCase() === "y";
 					}
 
+					// Ask if user wants to create under an org
+					let selectedOrg: string | undefined;
+					if (!opts.yes) {
+						const orgNames = [
+							...new Set(
+								registries
+									.filter((r) => r.organization)
+									.map((r) => r.organization!),
+							),
+						];
+						if (orgNames.length > 0) {
+							log.info("Create under:");
+							log.info("  0. Personal (your account)");
+							orgNames.forEach((o, i) => {
+								log.info(`  ${i + 1}. ${o}`);
+							});
+							const orgChoice = await prompt("Select (number, default: 0): ");
+							const orgIdx = parseInt(orgChoice, 10);
+							if (orgIdx > 0 && orgIdx <= orgNames.length) {
+								selectedOrg = orgNames[orgIdx - 1];
+							}
+						}
+					}
+
 					// Create on remote
 					try {
 						await client.post("/api/cli/registries/create", {
 							name: registryName,
 							displayName,
 							isPrivate,
+							...(selectedOrg ? { organization: selectedOrg } : {}),
 						});
-						log.success(`Created registry @${registryName}`);
+						const label = selectedOrg
+							? `@${selectedOrg}/${registryName}`
+							: `@${registryName}`;
+						log.success(`Created registry ${label}`);
 					} catch (e: unknown) {
 						log.error(
 							`Failed to create registry: ${e instanceof Error ? e.message : "Unknown error"}`,

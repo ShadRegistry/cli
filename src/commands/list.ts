@@ -51,13 +51,14 @@ async function listRegistries(client: ApiClient, asJson: boolean) {
 
     // Print table header
     log.info(
-      `${"NAME".padEnd(24)} ${"DISPLAY NAME".padEnd(24)} ${"PRIVATE".padEnd(10)} ${"INSTALLS".padEnd(10)}`,
+      `${"NAME".padEnd(24)} ${"DISPLAY NAME".padEnd(24)} ${"ORG".padEnd(16)} ${"PRIVATE".padEnd(10)} ${"INSTALLS".padEnd(10)}`,
     );
-    log.dim("-".repeat(68));
+    log.dim("-".repeat(84));
 
     for (const r of data.registries) {
+      const org = (r as any).organization ?? "";
       log.info(
-        `${r.name.padEnd(24)} ${r.displayName.padEnd(24)} ${(r.isPrivate ? "Yes" : "No").padEnd(10)} ${String(r.totalInstalls).padEnd(10)}`,
+        `${r.name.padEnd(24)} ${r.displayName.padEnd(24)} ${(org || "-").padEnd(16)} ${(r.isPrivate ? "Yes" : "No").padEnd(10)} ${String(r.totalInstalls).padEnd(10)}`,
       );
     }
   } catch (e: any) {

@@ -51,6 +51,7 @@ export const publishCommand = new Command("publish")
 						name: string;
 						displayName: string;
 						isPrivate: boolean;
+						organization: string | null;
 					}>;
 				}>("/api/cli/registries");
 
@@ -58,7 +59,7 @@ export const publishCommand = new Command("publish")
 					log.info("Your registries:");
 					registries.forEach((r, i) => {
 						log.info(
-							`  ${i + 1}. ${r.name} ${r.isPrivate ? "(private)" : "(public)"}`,
+							`  ${i + 1}. ${r.name}${r.organization ? ` [${r.organization}]` : ""} ${r.isPrivate ? "(private)" : "(public)"}`,
 						);
 					});
 					log.info(`  ${registries.length + 1}. Enter a new name`);
